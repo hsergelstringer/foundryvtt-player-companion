@@ -79,3 +79,10 @@
 #player-companion-party-trackers .pip.on { background: #e8c26a; border-color: #e8c26a; }
 #player-companion-party-trackers .clock { width: 1rem; height: 1rem; border-width: 1px; }
 #player-companion-party-trackers .panel-hint { display: none; }
+
+/* Item request chat cards */
+
+.player-companion-request p { margin: 0 0 0.4rem; }
+.player-companion-request .pc-request-buttons { display: flex; gap: 0.4rem; }
+.player-companion-request .pc-request-buttons button { flex: 1; }
+.player-companion-request .pc-request-outcome { margin: 0; opacity: 0.85; }

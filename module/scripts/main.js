@@ -1,4 +1,5 @@
 import { ACTIONS, RelayError } from "./actions.js";
+import { registerItemSettings, setupItems } from "./items.js";
 import { sha256Hex } from "./sha256.js";
 import { registerTrackerSettings, setupTrackers, TrackerWindow } from "./trackers.js";
 
@@ -215,7 +216,14 @@ Hooks.on(`${MODULE_ID}.trackersChanged`, () => {
   Relay.send({ type: "event", userIds: game.users.map(u => u.id), payload: { type: "trackersChanged" } });
 });
 
+// Item requests live in a world setting too; approving one also changes the actor, which notifies above.
+Hooks.on(`${MODULE_ID}.requestsChanged`, () => {
+  if (Relay.status !== "connected") return;
+  Relay.send({ type: "event", userIds: game.users.map(u => u.id), payload: { type: "requestsChanged" } });
+});
+
 setupTrackers();
+setupItems();
 
 Hooks.on("updateUser", (user, changes) => {
   if (!foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) return;
@@ -335,6 +343,7 @@ Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "appUrl", { scope: "world", config: false, type: String, default: "" });
 
   registerTrackerSettings();
+  registerItemSettings();
 
   game.settings.registerMenu(MODULE_ID, "menu", {
     name: "Player Companion",

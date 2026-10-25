@@ -19,6 +19,21 @@ Foundry modules run in the browser and can't listen for HTTP requests, so the mo
 - Take a short or long rest
 - See changes made in Foundry live
 - Update custom trackers, and add their own if the GM allows it
+- Add items and spells from compendiums, and remove them, with the GM's approval if the GM wants it
+
+## Items and spells from compendiums
+
+The Inventory and Spells tabs have **Add item** and **Add spell** buttons. Players search by name, filter by item type, spell level or compendium, tap a result to read it, and add it. Items arrive the way they do when dropped on the dnd5e sheet: containers come with their contents, items aren't equipped, identical consumables stack, and spells are given the character's spellcasting class. Opening an item on the sheet shows a **Remove** button.
+
+The world setting **Adding and removing items in the web app** decides what happens:
+
+| Setting | What happens |
+| --- | --- |
+| The GM approves each change (default) | The GMs get a whispered chat card with **Approve** and **Deny**. The player sees the request as waiting, and can withdraw it. If the GM denies it, the player sees that until they dismiss it. |
+| Players change items directly | The change happens at once, and the GMs get a note in chat. |
+| Off | No adding or removing from the web app. |
+
+Players only see compendiums they have access to in Foundry. To keep a compendium out of the web app, set its ownership for players to **None**. Only physical items (weapons, equipment, consumables, tools, loot, containers) and spells can be added or removed. Classes, features and anything with advancement steps still go through Foundry.
 
 ## Trackers
 
@@ -105,12 +120,17 @@ All requests except `/api/health` need `Authorization: Bearer <token>`. A token 
 | POST | `/api/actors/:id/setTracker` | `{ "trackerId": "…", "scope": "actor", "value": 3 }`; `scope` is `world` for party trackers |
 | POST | `/api/actors/:id/createTracker` | `{ "name": "Luck", "type": "pips", "max": 3 }`; also `min`, `description`, and `bands` for banded counters |
 | POST | `/api/actors/:id/deleteTracker` | `{ "trackerId": "…" }` (the player's own trackers only) |
+| POST | `/api/actors/:id/searchItems` | `{ "kind": "item", "query": "rope" }`; also `pack`, `type`, and `level` for spells. Returns `{ total, results, packs }` (at most 50 results) |
+| POST | `/api/actors/:id/itemDetails` | `{ "uuid": "Compendium.…" }`; returns the item with its description |
+| POST | `/api/actors/:id/addItem` | `{ "uuid": "Compendium.…", "quantity": 1 }`; adds the item, or asks the GM to |
+| POST | `/api/actors/:id/removeItem` | `{ "itemId": "…" }`; removes the item, or asks the GM to |
+| POST | `/api/actors/:id/cancelItemRequest` | `{ "requestId": "…" }`; withdraws a waiting request or dismisses a denied one |
 
-Every POST returns the updated sheet; `roll` returns `{ roll, actor }`.
+Every POST returns the updated sheet, except: `roll` returns `{ roll, actor }`, `addItem` and `removeItem` return `{ actor, notice }`, and the two search actions return search data.
 
-Sheets include `trackers: { character, party, canCreate }`, with each tracker's value and whether the user can change or delete it.
+Sheets include `trackers: { character, party, canCreate }`, with each tracker's value and whether the user can change or delete it, and `itemChanges: { mode, requests }`, with the character's waiting and denied item requests.
 
-For live updates, open a WebSocket to `/api/events` and send `{"type":"auth","token":"…"}` first. You'll receive `{"type":"actorChanged","actorId":"…"}` whenever one of your characters changes, `{"type":"trackersChanged"}` when party trackers or templates change, and `{"type":"foundry","connected":false}` when the GM's browser goes offline.
+For live updates, open a WebSocket to `/api/events` and send `{"type":"auth","token":"…"}` first. You'll receive `{"type":"actorChanged","actorId":"…"}` whenever one of your characters changes, `{"type":"trackersChanged"}` when party trackers or templates change, `{"type":"requestsChanged"}` when item requests change, and `{"type":"foundry","connected":false}` when the GM's browser goes offline.
 
 To add an action, add a function to `ACTIONS` in `module/scripts/actions.js`. It is reachable at `POST /api/actors/:id/<name>` with no relay changes.
 

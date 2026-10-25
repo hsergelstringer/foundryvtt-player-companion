@@ -74,7 +74,7 @@ button.danger { background: var(--danger); color: #fff; border-color: var(--dang
 button.heal { background: var(--heal); color: #fff; border-color: var(--heal); }
 button.ghost { background: transparent; }
 
-input[type="number"], input[type="password"], input[type="text"] {
+input[type="number"], input[type="password"], input[type="text"], input[type="search"] {
   font: inherit;
   color: inherit;
   background: var(--surface);
@@ -211,6 +211,31 @@ label.check input { width: 20px; height: 20px; accent-color: var(--accent); }
 .item-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 .uses { display: inline-flex; align-items: center; }
 .description { white-space: pre-line; font-size: 0.9rem; color: var(--muted); margin: 6px 0 2px; }
+.item-actions { display: flex; justify-content: flex-end; margin: 6px 0 2px; font-size: 0.9rem; }
+button.danger-text { color: var(--danger); border-color: var(--danger); }
+
+/* Adding items from compendiums */
+
+.add-button { align-self: flex-start; }
+.adder { display: flex; flex-direction: column; gap: 10px; }
+.adder.loading .results { opacity: 0.6; }
+.adder-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.adder-head h2 { margin: 0; }
+.adder-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.adder-filters input { grid-column: 1 / -1; }
+.adder-filters select:only-of-type { grid-column: 1 / -1; }
+.adder select, .requests select {
+  font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; min-height: 40px; min-width: 0; width: 100%;
+}
+.adder .item { background: var(--surface-2); }
+.result-meta { display: block; font-size: 0.8rem; margin-top: 2px; }
+.requests { display: flex; flex-direction: column; gap: 8px; }
+.requests h2 { margin: 0; }
+.request { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; }
+.request img { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; flex: none; }
+.request-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.request.denied { border-color: var(--danger); }
 
 .slots { display: flex; flex-direction: column; gap: 8px; }
 .slot-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }

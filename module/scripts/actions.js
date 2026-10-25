@@ -6,14 +6,11 @@
  * Written against dnd5e 4.x and 5.x; older data shapes are handled where cheap.
  */
 
+import { RelayError } from "./errors.js";
+import * as Items from "./items.js";
 import * as Trackers from "./trackers.js";
 
-export class RelayError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
+export { RelayError };
 
 const OWNER = "OWNER";
 const MAX_DESCRIPTION = 4000;
@@ -107,7 +104,8 @@ function serializeItem(item) {
     type: item.type,
     img: imageUrl(item.img),
     description: plainText(sys.description?.value),
-    uses: null
+    uses: null,
+    removable: Items.isManaged(item)
   };
   const uses = itemUses(item);
   if (uses) data.uses = { value: uses.value, max: uses.max };
@@ -233,6 +231,13 @@ export function serializeActor(actor, user) {
     skills,
     spellSlots: serializeSpellSlots(actor),
     items,
+    itemChanges: {
+      mode: Items.itemChangeMode(),
+      requests: Items.requestsFor(actor).map(r => ({
+        id: r.id, kind: r.kind, status: r.status, name: r.name, img: imageUrl(r.img), type: r.type,
+        quantity: r.quantity, itemId: r.itemId, reason: r.reason ?? null, userName: r.userName
+      }))
+    },
     trackers: user ? Trackers.trackersFor(user, actor) : null
   };
 }
@@ -466,6 +471,60 @@ export const ACTIONS = {
     if (!tracker) throw new RelayError(404, "Tracker not found");
     if (!Trackers.canManagePersonal(user, actor)) throw new RelayError(403, "The GM hasn't allowed players to remove trackers");
     await Trackers.deletePersonal(actor, tracker.id);
+    return serializeActor(actor, user);
+  },
+
+  /**
+   * Body: { kind: "item" | "spell", query?, pack?, type?, level? }.
+   * Searches the compendiums this user can see. Returns { total, results, packs }.
+   */
+  async searchItems(user, { actorId, kind, query, pack, type, level }) {
+    ownedActor(user, actorId);
+    if (kind !== "item" && kind !== "spell") throw new RelayError(400, "kind must be item or spell");
+    const found = await Items.search(user, {
+      kind,
+      query: typeof query === "string" ? query.slice(0, 100) : "",
+      pack: typeof pack === "string" ? pack : "",
+      type: typeof type === "string" ? type : "",
+      level: level === undefined || level === null || level === "" ? null : requireInt(level, "level", { min: 0, max: 9 })
+    });
+    return { ...found, results: found.results.map(r => ({ ...r, img: imageUrl(r.img) })) };
+  },
+
+  /** Body: { uuid }. A compendium item's details, for the search results. */
+  async itemDetails(user, { actorId, uuid }) {
+    ownedActor(user, actorId);
+    const doc = await Items.compendiumItem(user, uuid);
+    return { uuid, ...serializeItem(doc) };
+  },
+
+  /**
+   * Body: { uuid, quantity? }. Adds a compendium item or spell, or asks the GM to.
+   * Returns { actor, notice }.
+   */
+  async addItem(user, { actorId, uuid, quantity }) {
+    const actor = ownedActor(user, actorId);
+    const source = await Items.compendiumItem(user, uuid);
+    const notice = await Items.requestChange(user, actor, {
+      kind: "add", source,
+      quantity: quantity === undefined || quantity === null ? null : requireInt(quantity, "quantity", { min: 1, max: 999 })
+    });
+    return { actor: serializeActor(actor, user), notice };
+  },
+
+  /** Body: { itemId }. Removes an item or spell, or asks the GM to. Returns { actor, notice }. */
+  async removeItem(user, { actorId, itemId }) {
+    const actor = ownedActor(user, actorId);
+    const item = ownedItem(actor, itemId);
+    if (!Items.isManaged(item)) throw new RelayError(400, "Only items and spells can be removed from the web app");
+    const notice = await Items.requestChange(user, actor, { kind: "remove", item });
+    return { actor: serializeActor(actor, user), notice };
+  },
+
+  /** Body: { requestId }. Withdraws a pending request or dismisses a denied one. */
+  async cancelItemRequest(user, { actorId, requestId }) {
+    const actor = ownedActor(user, actorId);
+    await Items.cancelRequest(actor, String(requestId ?? ""));
     return serializeActor(actor, user);
   },
 

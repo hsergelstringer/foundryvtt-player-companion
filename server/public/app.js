@@ -17,7 +17,8 @@ const state = {
   busy: false,
   error: null,
   foundry: true,
-  open: new Set() // expanded item descriptions
+  open: new Set(), // expanded item descriptions
+  adder: null // the compendium search panel, see adderView()
 };
 
 const storage = {
@@ -90,6 +91,10 @@ async function act(action, body = {}) {
       state.actor = data.actor;
       showRoll(body, data.roll);
     }
+    else if (data.notice) {
+      state.actor = data.actor;
+      toast(data.notice);
+    }
     else state.actor = data;
   }
   catch (err) {
@@ -153,7 +158,7 @@ function connectEvents() {
       if (msg.connected) refresh();
     }
     else if (msg.type === "actorChanged" && msg.actorId === state.actorId && !state.busy) refresh();
-    else if (msg.type === "trackersChanged" && !state.busy) refresh();
+    else if ((msg.type === "trackersChanged" || msg.type === "requestsChanged") && !state.busy) refresh();
     else if (msg.type === "error" && msg.status === 503) setFoundry(false);
   });
   socket.addEventListener("close", event => {
@@ -236,6 +241,7 @@ async function loadMe() {
 async function selectActor(id) {
   state.actorId = id;
   state.actor = null;
+  state.adder = null;
   state.open.clear();
   storage.set(ACTOR_KEY, id);
   if (id) await refresh();
@@ -249,6 +255,9 @@ async function selectActor(id) {
 function render() {
   const root = document.getElementById("app");
   const scrollY = window.scrollY;
+  // Keep the cursor in a text box (like the item search) across re-renders.
+  const focused = document.activeElement?.dataset?.focusKey;
+  const selection = focused ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   let view;
   if (state.token && !state.me && !state.foundry) view = el("p", { class: "loading" }, "Waiting for Foundry…");
   else if (!state.token || !state.me) view = loginView();
@@ -256,6 +265,11 @@ function render() {
   else if (!state.actor) view = el("p", { class: "loading" }, "Loading character…");
   else view = sheetView(state.actor);
   root.replaceChildren(view);
+  if (focused) {
+    const input = root.querySelector(`[data-focus-key="${focused}"]`);
+    input?.focus({ preventScroll: true });
+    try { input?.setSelectionRange(...selection); } catch { /* not a text input */ }
+  }
   window.scrollTo(0, scrollY);
   root.querySelector(".tabs .active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
@@ -299,7 +313,7 @@ function sheetView(a) {
   const tabs = [
     ["abilities", "Abilities"],
     ["skills", "Skills"],
-    a.items.spells.length || a.spellSlots.length ? ["spells", "Spells"] : null,
+    a.items.spells.length || a.spellSlots.length || a.spellcasting.ability ? ["spells", "Spells"] : null,
     ["inventory", "Inventory"],
     ["features", "Features"],
     hasTrackers(a) ? ["trackers", "Trackers"] : null
@@ -317,7 +331,7 @@ function sheetView(a) {
     el("nav", { class: "tabs" }, tabs.map(([key, label]) =>
       el("button", {
         class: state.tab === key ? "active" : "",
-        onclick: () => { state.tab = key; storage.set(TAB_KEY, key); render(); }
+        onclick: () => { state.tab = key; state.adder = null; storage.set(TAB_KEY, key); render(); }
       }, label))),
     el("section", { class: "tab-body" }, {
       abilities: () => abilitiesView(a),
@@ -461,7 +475,174 @@ function itemRow(item, extras = []) {
         onclick: () => { open ? state.open.delete(item.id) : state.open.add(item.id); render(); }
       }, img(item.img), el("span", {}, item.name)),
       el("div", { class: "item-controls" }, extras)),
-    open && item.description ? el("p", { class: "description" }, item.description) : null);
+    open && item.description ? el("p", { class: "description" }, item.description) : null,
+    open ? removeButton(item) : null);
+}
+
+/* -------------------------------------------- */
+/*  Adding and removing items                   */
+/* -------------------------------------------- */
+
+const changesMode = () => state.actor?.itemChanges?.mode ?? "off";
+
+function removeButton(item) {
+  if (!item.removable || changesMode() === "off") return null;
+  const approve = changesMode() === "approve";
+  const pending = state.actor.itemChanges.requests.some(r => r.kind === "remove" && r.itemId === item.id && r.status === "pending");
+  if (pending) return el("p", { class: "muted item-actions" }, "Waiting for the GM to approve removing this.");
+  return el("div", { class: "item-actions" },
+    el("button", {
+      class: "ghost danger-text",
+      onclick: () => window.confirm(approve ? `Ask the GM to remove ${item.name}?` : `Remove ${item.name}?`)
+        && act("removeItem", { itemId: item.id })
+    }, approve ? "Ask GM to remove" : "Remove"));
+}
+
+/** Pending and denied requests for one tab ("spell" or "item"). */
+function requestsView(a, kind) {
+  const list = (a.itemChanges?.requests ?? []).filter(r => (r.type === "spell") === (kind === "spell"));
+  if (!list.length) return null;
+  return el("section", { class: "requests card" },
+    el("h2", {}, "Requests"),
+    el("ul", { class: "items" }, list.map(r =>
+      el("li", { class: `request ${r.status}` },
+        img(r.img),
+        el("span", { class: "request-text" },
+          el("strong", {}, r.kind === "add" ? "Add " : "Remove "),
+          r.quantity > 1 ? `${r.name} ×${r.quantity}` : r.name,
+          el("small", { class: "muted" }, r.status === "pending" ? " · waiting for the GM" : ` · ${r.reason ? `couldn't be done: ${r.reason}` : "the GM said no"}`)),
+        el("button", {
+          class: "ghost", onclick: () => act("cancelItemRequest", { requestId: r.id })
+        }, r.status === "pending" ? "Withdraw" : "Dismiss")))));
+}
+
+function addButton(kind) {
+  if (changesMode() === "off") return null;
+  return el("button", {
+    class: "add-button",
+    onclick: () => { openAdder(kind); }
+  }, kind === "spell" ? "+ Add spell" : "+ Add item");
+}
+
+const ITEM_TYPE_FILTERS = [["", "All types"], ["weapon", "Weapons"], ["equipment", "Equipment"], ["consumable", "Consumables"],
+  ["tool", "Tools"], ["loot", "Loot"], ["container", "Containers"]];
+
+function openAdder(kind) {
+  state.adder = { kind, query: "", pack: "", type: "", level: "", results: null, total: 0, packs: [], loading: false, open: null, details: {}, seq: 0 };
+  render();
+  searchItems();
+}
+
+let searchTimer = null;
+function queueSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(searchItems, 250);
+}
+
+async function searchItems() {
+  const adder = state.adder;
+  if (!adder) return;
+  const seq = ++adder.seq;
+  adder.loading = true;
+  render();
+  try {
+    const data = await api("POST", `actors/${state.actorId}/searchItems`, {
+      kind: adder.kind, query: adder.query, pack: adder.pack, type: adder.type, level: adder.level
+    });
+    if (state.adder !== adder || seq !== adder.seq) return; // a newer search is on its way
+    Object.assign(adder, { results: data.results, total: data.total, packs: data.packs });
+  }
+  catch (err) {
+    handleError(err);
+  }
+  finally {
+    if (state.adder === adder && seq === adder.seq) {
+      adder.loading = false;
+      render();
+    }
+  }
+}
+
+async function toggleResult(uuid) {
+  const adder = state.adder;
+  adder.open = adder.open === uuid ? null : uuid;
+  render();
+  if (!adder.open || adder.details[uuid]) return;
+  try {
+    adder.details[uuid] = await api("POST", `actors/${state.actorId}/itemDetails`, { uuid });
+  }
+  catch (err) {
+    handleError(err);
+  }
+  render();
+}
+
+function adderView(a) {
+  const adder = state.adder;
+  const isSpell = adder.kind === "spell";
+  const approve = changesMode() === "approve";
+  const setFilter = (key, value) => { adder[key] = value; searchItems(); };
+
+  const filters = el("div", { class: "adder-filters" },
+    el("input", {
+      type: "search", placeholder: isSpell ? "Search spells" : "Search items", value: adder.query,
+      dataset: { focusKey: "adder-query" }, autocomplete: "off", enterkeyhint: "search",
+      oninput: e => { adder.query = e.target.value; queueSearch(); }
+    }),
+    isSpell
+      ? el("select", { "aria-label": "Spell level", onchange: e => setFilter("level", e.target.value) },
+        [["", "All levels"], ["0", "Cantrips"], ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(l => [String(l), `Level ${l}`])]
+          .map(([v, l]) => el("option", { value: v, selected: adder.level === v }, l)))
+      : el("select", { "aria-label": "Item type", onchange: e => setFilter("type", e.target.value) },
+        ITEM_TYPE_FILTERS.map(([v, l]) => el("option", { value: v, selected: adder.type === v }, l))),
+    adder.packs.length > 1
+      ? el("select", { "aria-label": "Compendium", onchange: e => setFilter("pack", e.target.value) },
+        el("option", { value: "" }, "All compendiums"),
+        adder.packs.map(p => el("option", { value: p.id, selected: adder.pack === p.id }, p.label)))
+      : null);
+
+  let body;
+  if (!adder.results) body = el("p", { class: "muted" }, "Searching…");
+  else if (!adder.results.length) {
+    body = el("p", { class: "muted" }, adder.packs.length
+      ? "Nothing matches."
+      : `There are no ${isSpell ? "spells" : "items"} in the compendiums you can see. The GM controls which compendiums players can open.`);
+  }
+  else {
+    body = [
+      el("ul", { class: "items results" }, adder.results.map(r => {
+        const open = adder.open === r.uuid;
+        const details = adder.details[r.uuid];
+        const meta = isSpell
+          ? [r.level ? `Level ${r.level}` : "Cantrip", r.school, r.pack]
+          : [r.typeLabel, r.rarity, r.price, r.pack];
+        return el("li", { class: "item" },
+          el("div", { class: "item-main" },
+            el("button", { class: "item-name", onclick: () => toggleResult(r.uuid) },
+              img(r.img),
+              el("span", {}, r.name, el("small", { class: "muted result-meta" }, meta.filter(Boolean).join(" · ")))),
+            el("div", { class: "item-controls" },
+              el("button", { class: "primary", onclick: () => act("addItem", { uuid: r.uuid }) }, approve ? "Ask GM" : "Add"))),
+          open ? el("p", { class: "description" }, details ? details.description || "No description." : "Loading…") : null);
+      })),
+      adder.total > adder.results.length
+        ? el("p", { class: "muted hint" }, `Showing ${adder.results.length} of ${adder.total}. Type more of the name to narrow it down.`)
+        : null
+    ];
+  }
+
+  return el("section", { class: `adder card ${adder.loading ? "loading" : ""}` },
+    el("header", { class: "adder-head" },
+      el("h2", {}, isSpell ? "Add a spell" : "Add an item"),
+      el("button", { class: "ghost", onclick: () => { state.adder = null; render(); }, "aria-label": "Close" }, "✕")),
+    approve ? el("p", { class: "muted hint" }, "The GM approves each addition before it reaches your sheet.") : null,
+    filters,
+    body);
+}
+
+/** The add button, or the search panel when it's open for this tab. */
+function adderSlot(a, kind) {
+  return state.adder?.kind === kind ? adderView(a) : addButton(kind);
 }
 
 function usesControl(item) {
@@ -480,6 +661,8 @@ function spellsView(a) {
   }
   const levels = [...byLevel.keys()].sort((x, y) => x - y);
   return [
+    adderSlot(a, "spell"),
+    requestsView(a, "spell"),
     a.spellSlots.length ? el("div", { class: "slots card" },
       el("h2", {}, "Spell slots"),
       a.spellSlots.map(slot =>
@@ -523,6 +706,8 @@ function inventoryView(a) {
   const groups = [["weapons", "Weapons"], ["equipment", "Equipment"], ["consumables", "Consumables"], ["tools", "Tools"], ["loot", "Loot & containers"]];
   return [
     currencyView(a),
+    adderSlot(a, "item"),
+    requestsView(a, "item"),
     groups.filter(([key]) => a.items[key].length).map(([key, title]) => el("section", { class: "group" },
       el("h2", {}, title),
       el("ul", { class: "items" }, a.items[key].map(item => itemRow(item, [
