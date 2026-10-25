@@ -1,4 +1,4 @@
-# Publishing a GitHub release tagged vX.Y.Z:
+# Publishing a GitHub release tagged vX.Y.Z runs the tests, then:
 #  - builds module.zip from module/ and attaches it with a module.json whose
 #    version and download URL match the tag. Foundry installs and updates from
 #    https://github.com/hsergelstringer/foundryvtt-player-companion/releases/latest/download/module.json
@@ -15,7 +15,11 @@ permissions:
   packages: write
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   module:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +45,7 @@ jobs:
         run: gh release upload "${{ github.event.release.tag_name }}" module/module.json module.zip --clobber
 
   server-image:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -9,6 +9,7 @@
 - A `}` in an item's name broke the link on the GM's approval card.
 - The exhaustion picker follows dnd5e's number of levels instead of assuming 6.
 - `deathSaves` with nothing to change is an error instead of an empty update; malformed URLs get 400 instead of 500.
+- If a description couldn't be loaded (e.g. while Foundry was offline), the web app retried in a loop; it now says so and tries again when the row is reopened.
 
 **Changed**
 - Descriptions load when a row is first opened, and stay cached until the item changes. Sheets are much smaller.
@@ -18,6 +19,9 @@
 **API**
 - New `itemDescription` action. Sheet items no longer include `description`/`descriptionHtml`; they have `hasDescription` and `updated` instead. `itemDetails` (compendium) still includes the description.
 - Sheets have `exhaustionMax`.
+
+**Tests**
+- An automated test suite (`npm test`): unit tests for descriptions, trackers, the write queue and SHA-256, and end-to-end tests that run the real relay and module against a simulated Foundry world. It runs on every push and before every release.
 
 **Docs**
 - The README is now a guide for GMs and players, with troubleshooting. The API reference moved to `docs/API.md`, and `docs/DEVELOPMENT.md` covers how it fits together, the security model and releasing.

@@ -35,7 +35,9 @@ Changes made in Foundry reach phones the other way: the module listens to Foundr
 | `module/templates/` | Handlebars templates for the settings and trackers windows. |
 | `server/server.js` | The relay: REST routes, the Foundry socket, the event stream and static files. One dependency (`ws`). |
 | `server/public/` | The web app: plain JavaScript (`app.js`), no build step. |
-| `.github/workflows/release.yml` | Builds `module.zip` and the relay image when a release is published. |
+| `test/` | Automated tests; see [Tests](#tests). |
+| `.github/workflows/test.yml` | Runs the tests on every push and pull request. |
+| `.github/workflows/release.yml` | Runs the tests, then builds `module.zip` and the relay image when a release is published. |
 
 ## Where data lives
 
@@ -88,6 +90,22 @@ async itemCharges(user, { actorId, itemId, value }) {
 It's immediately available at `POST /api/actors/:id/itemCharges`. Never pass a client-supplied object straight to `update()`, and never build a field path from client input without checking it against a fixed list (see `spellSlot`).
 
 Throw `RelayError(status, message)` for anything the player should see; the message is shown to them as written. Anything else becomes a 500 and is logged in the GM's console.
+
+## Tests
+
+```sh
+npm ci                  # test dependencies (linkedom, a small DOM for Node)
+npm ci --prefix server  # the relay's dependency (ws)
+npm test
+```
+
+Needs Node 22 or later. The suite takes a couple of seconds and runs on every push and before every release.
+
+- **`test/units.test.js`**: the description converter (rolls, roll data, 5etools tags, links, secret blocks, and hostile HTML), tracker rules (ranges, negative bounds, bands), the write queue, and SHA-256 including the plain-HTTP fallback.
+- **`test/relay.test.js`**: end to end. It starts the real relay, loads the real module code into a simulated Foundry world, connects them, and drives everything over HTTP and the event stream like the web app does: tokens and revoking, ownership (another player gets 404), input validation, hit points, uses, attunement, descriptions, compendium search and adding with approval, direct and off modes, trackers, live events, and the two concurrency cases that used to lose changes.
+- **`test/support/foundry.js`**: the simulated world. It reproduces the parts of Foundry and dnd5e the module reads: documents whose `update` fires the same hooks, world settings whose new value only appears after a short delay (as with Foundry's server round trip), compendium packs, chat messages and dnd5e's prepared labels. It is not Foundry: anything that depends on real dnd5e behaviour (how a rest recovers uses, how an activity prepares its labels) still needs checking in a live world.
+
+When you add an action, add a test for it in `relay.test.js`, including what happens with bad input and with another player's token.
 
 ## Running it locally
 
