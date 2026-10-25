@@ -33,7 +33,7 @@ jobs:
 
       - name: Build module.zip
         working-directory: module
-        run: zip -r ../module.zip module.json scripts templates
+        run: zip -r ../module.zip module.json scripts templates styles
 
       - name: Attach to release
         env:
