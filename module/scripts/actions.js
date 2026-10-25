@@ -284,6 +284,10 @@ function serializeParty(actor) {
 }
 
 export function serializeActor(actor, user) {
+  // A Group the player owns is the party's stash: gear and money, none of a character's data.
+  if (actor.type === "group") {
+    return { id: actor.id, name: actor.name, type: actor.type, img: imageUrl(actor.img), party: serializeParty(actor) };
+  }
   const sys = actor.system;
   const attr = sys.attributes ?? {};
 

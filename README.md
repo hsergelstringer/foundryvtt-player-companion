@@ -100,6 +100,8 @@ In the web app, the Gear tab gets a **Character / Party** switch for every membe
 - Quantities and coin can be changed directly, for rations eaten or treasure found.
 - **Recent** lists the last changes made from the web app: who gave, took or changed what.
 
+If you give players ownership of the Group, it also appears in their character list. Opened there, it shows only the party's gear and money; taking and moving coin happen from a character.
+
 Moved items arrive unequipped and unattuned. Consumables and loot stack onto a matching item; giving a container gives its contents too. A character in more than one group uses the primary party, or else the first group by name. Spells, features and anything else that isn't a physical item stay on the character.
 
 ## Trackers

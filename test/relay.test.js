@@ -474,6 +474,30 @@ describe("party inventory", () => {
     assert.deepEqual(data.party.log.slice(0, 2).map(e => e.text), ["changed the coin: gp 60 → 200", "changed Rations from 4 to 3"]);
   });
 
+  test("a group the player owns opens as just its gear and money", async () => {
+    world.party.owners.add("other");
+    try {
+      assert.ok((await call("GET", "me", null, tokens.other)).data.characters.some(c => c.id === "party"));
+      const { status, data } = await call("GET", "actors/party", null, tokens.other);
+      assert.equal(status, 200);
+      assert.deepEqual(Object.keys(data).sort(), ["id", "img", "name", "party", "type"]);
+      assert.equal(data.party.id, "party");
+      assert.ok(partyItem(data, "Spear"));
+
+      const groupAct = (action, body) => call("POST", `actors/party/${action}`, body, tokens.other);
+      const changed = await groupAct("partyQuantity", { itemId: partyItem(data, "Rations").id, value: 2 });
+      assert.equal(changed.status, 200);
+      assert.equal(changed.data.party.log[0].actor, "Other", "credited to the player, not the group");
+      assert.equal((await groupAct("partyItemDescription", { itemId: partyItem(data, "Rations").id })).status, 200);
+      // Moving needs a character on the other end.
+      assert.equal((await groupAct("takeFromParty", { itemId: partyItem(data, "Rations").id })).status, 400);
+      assert.equal((await groupAct("moveCurrency", { direction: "fromParty", gp: 1 })).status, 400);
+    }
+    finally {
+      world.party.owners.delete("other");
+    }
+  });
+
   test("view-only and off", async () => {
     await game.settings.set("player-companion", "partyInventory", "view");
     const viewing = await sheet();

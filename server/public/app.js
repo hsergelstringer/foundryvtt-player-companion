@@ -406,7 +406,7 @@ function render() {
   else if (!state.actor) view = el("p", { class: "loading" }, "Loading character…");
   else view = sheetView(state.actor);
   root.replaceChildren(view);
-  document.body.classList.toggle("has-nav", !!(state.actor && state.actorId));
+  document.body.classList.toggle("has-nav", !!(state.actor && state.actorId && state.actor.type !== "group"));
   watchVitals();
 
   if (focused) {
@@ -447,7 +447,7 @@ function pickerView() {
         el("li", {},
           el("button", { class: "character-choice", onclick: () => selectActor(c.id) },
             avatar(c.img, c.name, "small"),
-            el("span", {}, el("strong", {}, c.name), el("small", { class: "muted" }, c.level ? `Level ${c.level}` : c.type))))))
+            el("span", {}, el("strong", {}, c.name), el("small", { class: "muted" }, c.type === "group" ? "Party" : c.level ? `Level ${c.level}` : c.type))))))
       : el("p", { class: "muted" }, `Signed in as ${me.user.name}, but you don't own any characters yet. Ask the GM to give your user ownership of one.`));
 }
 
@@ -475,23 +475,35 @@ function setTab(key) {
   window.scrollTo(0, 0);
 }
 
+const sheetHead = (img, name, subtitle) => el("header", { class: "sheet-head" },
+  avatar(img, name, "portrait"),
+  el("div", { class: "identity" }, el("h1", {}, name), el("p", { class: "muted" }, subtitle)),
+  el("button", { class: "icon-button", onclick: openMenu, "aria-label": "Menu" }, icon("more")));
+
+const sharedBy = party => (party.members.length ? `Shared by ${party.members.map(m => m.name).join(", ")}` : "Party");
+
+/** A Group actor opened directly: its gear and money, nothing else. */
+function groupView(a) {
+  return el("div", { class: "sheet" },
+    sheetHead(a.img, a.name, a.party ? sharedBy(a.party) : "Party"),
+    el("section", { class: "tab-body" }, a.party
+      ? partyView(a)
+      : el("p", { class: "muted empty" }, "The GM has turned off the party inventory in the web app.")));
+}
+
 function sheetView(a) {
+  if (a.type === "group") return groupView(a);
   const tabs = availableTabs(a);
   if (!tabs.some(t => t.key === state.tab)) state.tab = "stats";
   const classes = a.classes.map(c => `${c.name}${c.subclass ? ` (${c.subclass})` : ""} ${c.levels}`).join(" / ");
   // The party's inventory is the party's, so it gets the party's header and none of the character's vitals.
   const party = state.tab === "inventory" && showingParty(a) ? a.party : null;
   const subtitle = party
-    ? `Shared by ${party.members.map(m => m.name).join(", ")}`
+    ? sharedBy(party)
     : [classes || (a.level ? `Level ${a.level}` : ""), a.species].filter(Boolean).join(" · ");
 
   return el("div", { class: "sheet" },
-    el("header", { class: "sheet-head" },
-      avatar((party ?? a).img, (party ?? a).name, "portrait"),
-      el("div", { class: "identity" },
-        el("h1", {}, (party ?? a).name),
-        el("p", { class: "muted" }, subtitle)),
-      el("button", { class: "icon-button", onclick: openMenu, "aria-label": "Menu" }, icon("more"))),
+    sheetHead((party ?? a).img, (party ?? a).name, subtitle),
     party ? null : vitalsView(a),
     el("section", { class: "tab-body" }, {
       stats: () => statsView(a),
@@ -1245,7 +1257,8 @@ function partyRow(item, party) {
     quick: [!countable && item.quantity !== undefined && item.quantity !== 1 ? el("span", { class: "qty" }, `×${item.quantity}`) : null],
     usage: [countable ? usageLine("Quantity", null, count()) : null],
     controls: [!countable && item.quantity !== undefined && party.canEdit ? control("Quantity", count()) : null],
-    actions: [party.canEdit ? partyButton("Take", async () => {
+    // Taking needs a character to take it to, so it isn't offered on the group itself.
+    actions: [party.canEdit && state.actor.type !== "group" ? partyButton("Take", async () => {
       const n = await howMany(`Take ${item.name}`, item, "Take");
       if (n) act("takeFromParty", { itemId: item.id, quantity: n });
     }) : null]
@@ -1266,7 +1279,7 @@ function partyView(a) {
   return [
     party.canEdit ? null : el("p", { class: "muted hint" }, "Only the GM can change the party's inventory."),
     coinsView(party.currency, (coin, n) => act("partyCurrency", { [coin]: n }, s => { s.party.currency[coin] = n; }), !party.canEdit),
-    party.canEdit ? el("button", { class: "add-button", onclick: () => moveCoinsSheet(a) }, "Move coins") : null,
+    party.canEdit && a.type !== "group" ? el("button", { class: "add-button", onclick: () => moveCoinsSheet(a) }, "Move coins") : null,
     GEAR_GROUPS.filter(([key]) => party.items[key].length).map(([key, title]) => el("section", { class: "group" },
       el("h2", {}, title),
       el("ul", { class: "items" }, party.items[key].map(item => partyRow(item, party))))),

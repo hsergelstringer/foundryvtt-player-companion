@@ -59,9 +59,10 @@ function primaryParty() {
   catch { return null; }
 }
 
-/** The group a character belongs to, or null. */
+/** The group a character belongs to, or null. A group the player owns and opens directly is its own party. */
 export function partyOf(actor) {
-  if (partyMode() === "off" || actor.type === "group") return null;
+  if (partyMode() === "off") return null;
+  if (actor.type === "group") return actor;
   const groups = game.actors.filter(a => a.type === "group" && a.system.type?.value !== "encounter" && memberIds(a).includes(actor.id));
   const primary = primaryParty();
   return groups.find(g => g === primary) ?? groups.sort((a, b) => a.name.localeCompare(b.name))[0] ?? null;
@@ -72,11 +73,13 @@ export function membersOf(group) {
   return memberIds(group).map(id => game.actors.get(id)).filter(Boolean);
 }
 
-function requireParty(actor, { edit = false } = {}) {
+/** @param {object} [options]  `edit` to change the party; `move` to move things between it and a character. */
+function requireParty(actor, { edit = false, move = false } = {}) {
   const party = partyOf(actor);
   // Same answer for "no party" and "the setting is off".
   if (!party) throw new RelayError(404, `${actor.name} isn't in a party`);
   if (edit && partyMode() !== "edit") throw new RelayError(403, "Only the GM can change the party's inventory");
+  if (move && party === actor) throw new RelayError(400, "Open a character to move things in or out of the party");
   return party;
 }
 
@@ -91,7 +94,9 @@ export function partyItem(actor, itemId) {
 export const partyLog = group => group.getFlag(MODULE_ID, LOG_FLAG) ?? [];
 
 async function log(group, user, actor, text) {
-  const entry = { id: foundry.utils.randomID(), at: Date.now(), user: user.name, actor: actor.name, text };
+  // Changes made on the group itself are credited to the player rather than the group.
+  const who = actor === group ? user.name : actor.name;
+  const entry = { id: foundry.utils.randomID(), at: Date.now(), user: user.name, actor: who, text };
   await group.setFlag(MODULE_ID, LOG_FLAG, [entry, ...partyLog(group)].slice(0, LOG_SIZE));
 }
 
@@ -156,7 +161,7 @@ function countToMove(item, quantity) {
  */
 export function give(user, actor, itemId, quantity) {
   return withParty(async () => {
-    const party = requireParty(actor, { edit: true });
+    const party = requireParty(actor, { edit: true, move: true });
     const item = actor.items.get(itemId);
     if (!item) throw new RelayError(404, "Item not found");
     if (!ITEM_TYPES.has(item.type)) throw new RelayError(400, "Only items can go in the party's inventory");
@@ -170,7 +175,7 @@ export function give(user, actor, itemId, quantity) {
 /** Take an item, or some of a stack, out of the party's inventory. */
 export function take(user, actor, itemId, quantity) {
   return withParty(async () => {
-    const party = requireParty(actor, { edit: true });
+    const party = requireParty(actor, { edit: true, move: true });
     const item = partyItem(actor, itemId);
     const count = countToMove(item, quantity);
     await moveItem(item, actor, count);
@@ -203,7 +208,7 @@ export function setQuantity(user, actor, itemId, value) {
  */
 export function moveCoins(user, actor, direction, coins) {
   return withParty(async () => {
-    const party = requireParty(actor, { edit: true });
+    const party = requireParty(actor, { edit: true, move: true });
     const [from, to] = direction === "toParty" ? [actor, party] : [party, actor];
     const fromUpdate = {};
     const toUpdate = {};

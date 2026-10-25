@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.10
+
+**Changed**
+- The party shows only its gear and money. On the Party view, the character's header, hit points, AC and conditions are replaced by the party's name and members, and party items show only type, properties, rarity, attunement, weight, price, quantity and description (no to hit, damage, saves or uses, which depend on who wields an item).
+
+**Fixed**
+- A Group actor that players own appeared in their character list and opened as a character sheet full of zeros. It now opens as just the party's gear and money. Quantities and coin can be changed there; taking items and moving coin happen from a character.
+
+**API**
+- A Group actor's sheet is `{ id, name, type, img, party }`. Party items no longer include `uses`, `activityUses`, `activities`, `attunement`, `attuned`, `equipped` or `removable`. `giveToParty`, `takeFromParty` and `moveCurrency` answer `400` on a Group.
+
 ## 0.0.9
 
 **Added**

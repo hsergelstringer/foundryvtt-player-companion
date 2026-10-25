@@ -107,6 +107,8 @@ These act on the party of the character in the path, the Group actor it's a memb
 | `partyCurrency` | Any of `{ "pp", "gp", "ep", "sp", "cp" }` | Sets the party's coin, e.g. for treasure found |
 | `partyItemDescription` | `{ "itemId": "…" }` | Like `itemDescription`, for a party item. Secret blocks are never included. |
 
+A Group actor the user owns can also be used directly as `:id`. Its sheet is only `{ id, name, type: "group", img, party }`; `partyQuantity`, `partyCurrency` and `partyItemDescription` work on it, while `giveToParty`, `takeFromParty` and `moveCurrency` need a character and answer `400`.
+
 Moved items arrive unequipped and unattuned. Consumables and loot stack onto a matching item (same name and compendium source); moving all of a container brings its contents.
 
 **Trackers**
