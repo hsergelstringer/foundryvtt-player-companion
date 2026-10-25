@@ -467,7 +467,7 @@ button.pip::after { content: ""; position: absolute; inset: -8px; } /* a bigger 
 .button-row .default { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px currentColor; }
 .button-row .danger.default { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--danger); }
 .button-row .heal.default { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--heal); }
-.level-picker { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.level-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 6px; }
 .level-picker button { padding: 0; font-weight: 700; }
 
 /* Toasts */

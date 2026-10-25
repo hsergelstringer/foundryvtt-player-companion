@@ -178,7 +178,8 @@ const CACHE_LIMIT = 2000;
 export function describe(item, { secrets = false } = {}) {
   const source = item.system?.description?.value ?? "";
   if (!source.trim()) return Promise.resolve({ html: "", text: "" });
-  const key = `${item.uuid}:${item._stats?.modifiedTime ?? ""}:${secrets}:${source.length}`;
+  // The owner's modifiedTime is in the key because formulas use its roll data (@mod, @prof).
+  const key = `${item.uuid}:${item._stats?.modifiedTime ?? ""}:${item.parent?._stats?.modifiedTime ?? ""}:${secrets}:${source.length}`;
   if (!cache.has(key)) {
     if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value);
     cache.set(key, build(item, source, secrets).catch(err => {

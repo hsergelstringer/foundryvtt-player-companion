@@ -80,15 +80,39 @@ function copyRich(from, to) {
   }
 }
 
-/** An item's description: rich if the module sent it, plain text otherwise. */
-function description(item, loading = false) {
-  if (loading) return el("p", { class: "description muted" }, "Loading…");
-  if (item.descriptionHtml) {
+/** Descriptions of the character's items, fetched when a row is first opened. Key → data, or "loading". */
+const descriptions = new Map();
+
+function richDescription({ html, text }) {
+  if (html) {
     const box = el("div", { class: "description rich" });
-    copyRich(new DOMParser().parseFromString(`<body>${item.descriptionHtml}</body>`, "text/html").body, box);
+    copyRich(new DOMParser().parseFromString(`<body>${html}</body>`, "text/html").body, box);
     return box;
   }
-  return el("p", { class: `description ${item.description ? "" : "muted"}` }, item.description || "No description.");
+  return el("p", { class: `description ${text ? "" : "muted"}` }, text || "No description.");
+}
+
+/**
+ * An item's description. Compendium results carry theirs; the character's own
+ * items are fetched on first open and cached until the item changes.
+ */
+function description(item, loading = false) {
+  const waiting = el("p", { class: "description muted" }, "Loading…");
+  if (loading) return waiting;
+  if ("descriptionHtml" in item) return richDescription({ html: item.descriptionHtml, text: item.description });
+  if (!item.hasDescription) return el("p", { class: "description muted" }, "No description.");
+
+  const key = `${state.actorId}:${item.id}:${item.updated ?? ""}`;
+  const cached = descriptions.get(key);
+  if (cached && cached !== "loading") return richDescription(cached);
+  if (!cached) {
+    descriptions.set(key, "loading");
+    api("POST", `actors/${state.actorId}/itemDescription`, { itemId: item.id })
+      .then(data => descriptions.set(key, data))
+      .catch(err => { descriptions.delete(key); handleError(err); })
+      .finally(render);
+  }
+  return waiting;
 }
 
 const signed = n => (n >= 0 ? `+${n}` : `−${Math.abs(n)}`);
@@ -350,6 +374,7 @@ async function selectActor(id) {
   state.actor = null;
   state.adder = null;
   state.open.clear();
+  descriptions.clear();
   storage.set(ACTOR_KEY, id);
   if (id) await refresh();
   else render();
@@ -635,7 +660,7 @@ function hpSheet(a, mode = "damage") {
 }
 
 function exhaustionSheet(a) {
-  const levels = 6;
+  const levels = a.exhaustionMax ?? 6;
   openSheet("Exhaustion", close => el("div", { class: "sheet-body" },
     el("div", { class: "level-picker" }, Array.from({ length: levels + 1 }, (_, n) =>
       el("button", {

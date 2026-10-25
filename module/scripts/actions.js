@@ -91,22 +91,32 @@ function spellPreparation(item) {
 /* -------------------------------------------- */
 
 /**
- * An item as the app sees it. `descriptionHtml` is the description with Foundry's
- * rolls and links resolved, reduced to safe tags (see text.js); `description`
- * is the same as plain text.
+ * An item's description: `html` has Foundry's rolls and links resolved and is
+ * reduced to safe tags (see text.js); `text` is the same as plain text.
+ * Owners see secret blocks in Foundry, so they see them here; compendium previews never do.
  */
-async function serializeItem(item, user) {
-  const sys = item.system;
-  // Owners see secret blocks in Foundry, so they see them here; compendium previews never do.
+function itemDescription(item, user) {
   const secrets = !!(item.isEmbedded && user && item.testUserPermission(user, OWNER));
-  const { html, text } = await describe(item, { secrets }).catch(() => ({ html: "", text: "" }));
+  return describe(item, { secrets }).catch(err => {
+    console.warn(`player-companion | Couldn't prepare the description of ${item.uuid}`, err);
+    return { html: "", text: "" };
+  });
+}
+
+/**
+ * An item as the app sees it. Sheets leave the description out, because every
+ * change returns the whole sheet; the app asks for it with itemDescription when
+ * a row is opened. `updated` changes whenever the item does, for caching.
+ */
+function serializeItem(item) {
+  const sys = item.system;
   const data = {
     id: item.id,
     name: item.name,
     type: item.type,
     img: imageUrl(item.img),
-    description: text,
-    descriptionHtml: html,
+    updated: item._stats?.modifiedTime ?? null,
+    hasDescription: !!String(sys.description?.value ?? "").trim(),
     uses: null,
     removable: Items.isManaged(item)
   };
@@ -216,7 +226,7 @@ function serializeSpellcasting(actor) {
   };
 }
 
-export async function serializeActor(actor, user) {
+export function serializeActor(actor, user) {
   const sys = actor.system;
   const attr = sys.attributes ?? {};
 
@@ -247,9 +257,10 @@ export async function serializeActor(actor, user) {
   });
 
   const items = { weapons: [], equipment: [], consumables: [], tools: [], loot: [], features: [], spells: [] };
-  const grouped = [...actor.items].filter(item => ITEM_GROUPS[item.type]);
-  const serialized = await Promise.all(grouped.map(item => serializeItem(item, user)));
-  grouped.forEach((item, i) => items[ITEM_GROUPS[item.type]].push(serialized[i]));
+  for (const item of actor.items) {
+    const group = ITEM_GROUPS[item.type];
+    if (group) items[group].push(serializeItem(item));
+  }
   for (const list of Object.values(items)) list.sort((a, b) => (a.level ?? 0) - (b.level ?? 0) || a.name.localeCompare(b.name));
 
   const hp = attr.hp ?? {};
@@ -271,6 +282,7 @@ export async function serializeActor(actor, user) {
     death: { success: num(attr.death?.success), failure: num(attr.death?.failure) },
     inspiration: !!attr.inspiration,
     exhaustion: num(attr.exhaustion),
+    exhaustionMax: num(CONFIG.DND5E.conditionTypes?.exhaustion?.levels) || 6,
     conditions: [...(actor.statuses ?? [])],
     currency: Object.fromEntries(["pp", "gp", "ep", "sp", "cp"].map(k => [k, num(sys.currency?.[k])])),
     abilities,
@@ -350,6 +362,7 @@ export const ACTIONS = {
     const update = {};
     if (success !== undefined) update["system.attributes.death.success"] = requireInt(success, "success", { min: 0, max: 3 });
     if (failure !== undefined) update["system.attributes.death.failure"] = requireInt(failure, "failure", { min: 0, max: 3 });
+    if (!Object.keys(update).length) throw new RelayError(400, "Send success, failure or both");
     await actor.update(update);
     return serializeActor(actor, user);
   },
@@ -511,11 +524,18 @@ export const ACTIONS = {
     return { ...found, results: found.results.map(r => ({ ...r, img: imageUrl(r.img) })) };
   },
 
-  /** Body: { uuid }. A compendium item's details, for the search results. */
+  /** Body: { itemId }. One of the character's items' description, as { id, html, text }. */
+  async itemDescription(user, { actorId, itemId }) {
+    const item = ownedItem(ownedActor(user, actorId), itemId);
+    return { id: item.id, ...(await itemDescription(item, user)) };
+  },
+
+  /** Body: { uuid }. A compendium item's details and description, for the search results. */
   async itemDetails(user, { actorId, uuid }) {
     ownedActor(user, actorId);
     const doc = await Items.compendiumItem(user, uuid);
-    return { uuid, ...(await serializeItem(doc, null)) };
+    const { html, text } = await itemDescription(doc, null);
+    return { uuid, ...serializeItem(doc), description: text, descriptionHtml: html };
   },
 
   /**
@@ -529,7 +549,7 @@ export const ACTIONS = {
       kind: "add", source,
       quantity: quantity === undefined || quantity === null ? null : requireInt(quantity, "quantity", { min: 1, max: 999 })
     });
-    return { actor: await serializeActor(actor, user), notice };
+    return { actor: serializeActor(actor, user), notice };
   },
 
   /** Body: { itemId }. Removes an item or spell, or asks the GM to. Returns { actor, notice }. */
@@ -538,7 +558,7 @@ export const ACTIONS = {
     const item = ownedItem(actor, itemId);
     if (!Items.isManaged(item)) throw new RelayError(400, "Only items and spells can be removed from the web app");
     const notice = await Items.requestChange(user, actor, { kind: "remove", item });
-    return { actor: await serializeActor(actor, user), notice };
+    return { actor: serializeActor(actor, user), notice };
   },
 
   /** Body: { requestId }. Withdraws a pending request or dismisses a denied one. */

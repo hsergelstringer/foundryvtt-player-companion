@@ -15,6 +15,8 @@ import { readFile, stat } from "node:fs/promises";
 import { randomUUID, timingSafeEqual, createHash } from "node:crypto";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -23,6 +25,9 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? "*").split(",").map(s =>
 const PUBLIC_DIR = resolve(process.env.PUBLIC_DIR ?? join(fileURLToPath(new URL(".", import.meta.url)), "public"));
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_BODY_BYTES = 64 * 1024;
+/** Sheets are sent whole after every change; above this size they're worth compressing. */
+const GZIP_MIN_BYTES = 1024;
+const gzipAsync = promisify(gzip);
 
 if (SECRET.length < 16) {
   console.error("RELAY_SECRET must be set to at least 16 characters.");
@@ -175,9 +180,16 @@ function corsHeaders(req) {
   };
 }
 
-function sendJSON(req, res, status, body) {
-  res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", ...corsHeaders(req) });
-  res.end(JSON.stringify(body));
+async function sendJSON(req, res, status, body) {
+  const cors = corsHeaders(req);
+  const headers = { "Content-Type": "application/json", "Cache-Control": "no-store", ...cors, "Vary": cors.Vary ? `${cors.Vary}, Accept-Encoding` : "Accept-Encoding" };
+  let data = Buffer.from(JSON.stringify(body));
+  if (data.length >= GZIP_MIN_BYTES && /\bgzip\b/.test(req.headers["accept-encoding"] ?? "")) {
+    data = await gzipAsync(data);
+    headers["Content-Encoding"] = "gzip";
+  }
+  res.writeHead(status, headers);
+  res.end(data);
 }
 
 function readBody(req) {
@@ -254,7 +266,13 @@ async function serveStatic(req, res, path) {
     res.writeHead(405);
     return res.end();
   }
-  const relative = normalize(decodeURIComponent(path)).replace(/^(\.\.[/\\])+/, "");
+  let decoded;
+  try { decoded = decodeURIComponent(path); }
+  catch {
+    res.writeHead(400);
+    return res.end();
+  }
+  const relative = normalize(decoded).replace(/^(\.\.[/\\])+/, "");
   let file = join(PUBLIC_DIR, relative);
   if (!file.startsWith(PUBLIC_DIR)) {
     res.writeHead(403);
@@ -294,7 +312,8 @@ const server = createServer(async (req, res) => {
 /*  WebSockets                                  */
 /* -------------------------------------------- */
 
-const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 });
+// Foundry's replies carry whole character sheets, so allow large messages.
+const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
 
 server.on("upgrade", (req, socket, head) => {
   const { pathname } = new URL(req.url, "http://localhost");
