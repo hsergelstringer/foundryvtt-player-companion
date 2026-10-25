@@ -316,7 +316,28 @@ button.pip::after { content: ""; position: absolute; inset: -8px; } /* a bigger 
 .item-quick { display: flex; align-items: center; gap: 6px; flex: none; }
 .qty { font-weight: 700; font-size: 0.9rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .item-detail { padding: 0 14px 12px; display: flex; flex-direction: column; gap: 10px; }
-.description { white-space: pre-line; font-size: 0.92rem; color: var(--muted); margin: 0; max-height: 40vh; overflow-y: auto; }
+.description { white-space: pre-line; font-size: 0.92rem; color: var(--muted); margin: 0; max-height: 50vh; overflow-y: auto; }
+.description.rich { white-space: normal; color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
+.description.rich > :first-child { margin-top: 0; }
+.description.rich > :last-child { margin-bottom: 0; }
+.description.rich p, .description.rich ul, .description.rich ol, .description.rich blockquote, .description.rich table { margin: 0 0 0.6em; }
+.description.rich ul, .description.rich ol { padding-left: 1.3em; }
+.description.rich li { margin: 0.15em 0; }
+.description.rich h1, .description.rich h2, .description.rich h3, .description.rich h4, .description.rich h5, .description.rich h6 {
+  font-family: var(--display); font-size: 1rem; margin: 0.8em 0 0.3em; color: var(--text);
+}
+.description.rich blockquote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--muted); font-style: italic; }
+.description.rich table { border-collapse: collapse; width: 100%; font-size: 0.88rem; display: block; overflow-x: auto; }
+.description.rich th, .description.rich td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.description.rich th { color: var(--muted); font-weight: 600; }
+.description.rich hr { border: 0; border-top: 1px solid var(--line); margin: 0.8em 0; }
+.description.rich a { color: var(--accent); }
+.description .roll {
+  display: inline-block; padding: 0 6px; border-radius: 6px; white-space: nowrap;
+  background: var(--accent-soft); color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.description .ref { font-weight: 600; color: var(--text); text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+.description .ref.broken { text-decoration: line-through; color: var(--muted); }
 .item-controls { display: flex; flex-direction: column; gap: 8px; }
 .control { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
 .item-actions { display: flex; justify-content: flex-end; margin: 0; font-size: 0.9rem; }

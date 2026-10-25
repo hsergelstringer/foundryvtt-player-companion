@@ -59,6 +59,38 @@ function avatar(src, name, cls) {
   return el("span", { class: `avatar ${cls ?? ""}`, "aria-hidden": "true" }, initials, img(src));
 }
 
+/* Rich descriptions: the module sends a small set of safe tags (see module/scripts/text.js).
+   They are rebuilt here from that same list, never inserted as HTML. */
+const RICH_TAGS = new Set(["p", "br", "hr", "ul", "ol", "li", "strong", "b", "em", "i", "u", "s", "sup", "sub", "code", "blockquote",
+  "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "h1", "h2", "h3", "h4", "h5", "h6", "dl", "dt", "dd"]);
+const RICH_SPANS = new Set(["roll", "ref", "ref broken"]);
+
+function copyRich(from, to) {
+  for (const node of from.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) to.append(node.textContent);
+    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+    const tag = node.tagName.toLowerCase();
+    let target = to;
+    if (RICH_TAGS.has(tag)) target = to.appendChild(el(tag));
+    else if (tag === "span" && RICH_SPANS.has(node.className)) target = to.appendChild(el("span", { class: node.className }));
+    else if (tag === "a" && /^https?:\/\//i.test(node.getAttribute("href") ?? "")) {
+      target = to.appendChild(el("a", { href: node.getAttribute("href"), target: "_blank", rel: "noopener noreferrer" }));
+    }
+    copyRich(node, target);
+  }
+}
+
+/** An item's description: rich if the module sent it, plain text otherwise. */
+function description(item, loading = false) {
+  if (loading) return el("p", { class: "description muted" }, "Loading…");
+  if (item.descriptionHtml) {
+    const box = el("div", { class: "description rich" });
+    copyRich(new DOMParser().parseFromString(`<body>${item.descriptionHtml}</body>`, "text/html").body, box);
+    return box;
+  }
+  return el("p", { class: `description ${item.description ? "" : "muted"}` }, item.description || "No description.");
+}
+
 const signed = n => (n >= 0 ? `+${n}` : `−${Math.abs(n)}`);
 const minus = n => (n < 0 ? `−${Math.abs(n)}` : String(n));
 
@@ -677,7 +709,7 @@ function itemRow(item, { meta = [], quick = [], controls = [], lead = null } = {
         el("span", { class: "item-title" }, item.name, summary ? el("small", { class: "muted" }, summary) : null)),
       quickItems.length ? el("div", { class: "item-quick" }, quickItems) : null),
     open ? el("div", { class: "item-detail" },
-      el("p", { class: `description ${item.description ? "" : "muted"}` }, item.description || "No description."),
+      description(item),
       controlItems.length ? el("div", { class: "item-controls" }, controlItems) : null,
       removeButton(item)) : null);
 }
@@ -845,7 +877,7 @@ function adderView() {
             el("div", { class: "item-quick" },
               el("button", { class: "primary small", onclick: () => act("addItem", { uuid: r.uuid }) }, approve ? "Ask GM" : "Add"))),
           open ? el("div", { class: "item-detail" },
-            el("p", { class: "description" }, details ? details.description || "No description." : "Loading…")) : null);
+            description(details ?? {}, !details)) : null);
       })),
       adder.total > adder.results.length
         ? el("p", { class: "muted hint" }, `Showing ${adder.results.length} of ${adder.total}. Type more of the name to narrow it down.`)

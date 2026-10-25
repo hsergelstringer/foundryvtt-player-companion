@@ -126,6 +126,8 @@ All requests except `/api/health` need `Authorization: Bearer <token>`. A token 
 
 Every POST returns the updated sheet, except: `addItem` and `removeItem` return `{ actor, notice }`, and the two search actions return search data.
 
+Items have `description` (plain text) and `descriptionHtml`. Both come from Foundry's enricher, so inline rolls, `@UUID` links, dnd5e enrichers like `[[/save dex 15]]` and `&Reference[prone]`, roll data like `@mod`, and leftover 5etools tags like `{@damage 1d6}` read as they do in Foundry. `descriptionHtml` only uses simple formatting tags (paragraphs, lists, tables, bold, italic), plus `<span class="roll">` for dice and `<span class="ref">` for links to documents and rules. Secret blocks are included only for people who own the item.
+
 Sheets include `speed: { walk, units, all, hover, special }` (`all` lists every non-zero speed), `spellcasting: { ability, dc, attack, classes }` (`classes` has each spellcasting class's DC and attack bonus), `trackers: { character, party, canCreate }`, with each tracker's value and whether the user can change or delete it, and `itemChanges: { mode, requests }`, with the character's waiting and denied item requests.
 
 For live updates, open a WebSocket to `/api/events` and send `{"type":"auth","token":"…"}` first. You'll receive `{"type":"actorChanged","actorId":"…"}` whenever one of your characters changes, `{"type":"trackersChanged"}` when party trackers or templates change, `{"type":"requestsChanged"}` when item requests change, and `{"type":"foundry","connected":false}` when the GM's browser goes offline.

@@ -8,12 +8,12 @@
 
 import { RelayError } from "./errors.js";
 import * as Items from "./items.js";
+import { describe } from "./text.js";
 import * as Trackers from "./trackers.js";
 
 export { RelayError };
 
 const OWNER = "OWNER";
-const MAX_DESCRIPTION = 4000;
 
 /* -------------------------------------------- */
 /*  Helpers                                     */
@@ -45,13 +45,6 @@ function ownedItem(actor, itemId) {
   const item = actor.items.get(String(itemId ?? ""));
   if (!item) throw new RelayError(404, "Item not found");
   return item;
-}
-
-function plainText(html) {
-  if (!html) return "";
-  const doc = new DOMParser().parseFromString(String(html), "text/html");
-  const text = (doc.body.textContent ?? "").replace(/\n{3,}/g, "\n\n").trim();
-  return text.length > MAX_DESCRIPTION ? `${text.slice(0, MAX_DESCRIPTION)}…` : text;
 }
 
 /** Absolute URL for an image path, so an app on another origin can load it. */
@@ -96,14 +89,23 @@ function spellPreparation(item) {
 /*  Serialisation                               */
 /* -------------------------------------------- */
 
-function serializeItem(item) {
+/**
+ * An item as the app sees it. `descriptionHtml` is the description with Foundry's
+ * rolls and links resolved, reduced to safe tags (see text.js); `description`
+ * is the same as plain text.
+ */
+async function serializeItem(item, user) {
   const sys = item.system;
+  // Owners see secret blocks in Foundry, so they see them here; compendium previews never do.
+  const secrets = !!(item.isEmbedded && user && item.testUserPermission(user, OWNER));
+  const { html, text } = await describe(item, { secrets }).catch(() => ({ html: "", text: "" }));
   const data = {
     id: item.id,
     name: item.name,
     type: item.type,
     img: imageUrl(item.img),
-    description: plainText(sys.description?.value),
+    description: text,
+    descriptionHtml: html,
     uses: null,
     removable: Items.isManaged(item)
   };
@@ -205,7 +207,7 @@ function serializeSpellcasting(actor) {
   };
 }
 
-export function serializeActor(actor, user) {
+export async function serializeActor(actor, user) {
   const sys = actor.system;
   const attr = sys.attributes ?? {};
 
@@ -236,10 +238,9 @@ export function serializeActor(actor, user) {
   });
 
   const items = { weapons: [], equipment: [], consumables: [], tools: [], loot: [], features: [], spells: [] };
-  for (const item of actor.items) {
-    const group = ITEM_GROUPS[item.type];
-    if (group) items[group].push(serializeItem(item));
-  }
+  const grouped = [...actor.items].filter(item => ITEM_GROUPS[item.type]);
+  const serialized = await Promise.all(grouped.map(item => serializeItem(item, user)));
+  grouped.forEach((item, i) => items[ITEM_GROUPS[item.type]].push(serialized[i]));
   for (const list of Object.values(items)) list.sort((a, b) => (a.level ?? 0) - (b.level ?? 0) || a.name.localeCompare(b.name));
 
   const hp = attr.hp ?? {};
@@ -485,7 +486,7 @@ export const ACTIONS = {
   async itemDetails(user, { actorId, uuid }) {
     ownedActor(user, actorId);
     const doc = await Items.compendiumItem(user, uuid);
-    return { uuid, ...serializeItem(doc) };
+    return { uuid, ...(await serializeItem(doc, null)) };
   },
 
   /**
@@ -499,7 +500,7 @@ export const ACTIONS = {
       kind: "add", source,
       quantity: quantity === undefined || quantity === null ? null : requireInt(quantity, "quantity", { min: 1, max: 999 })
     });
-    return { actor: serializeActor(actor, user), notice };
+    return { actor: await serializeActor(actor, user), notice };
   },
 
   /** Body: { itemId }. Removes an item or spell, or asks the GM to. Returns { actor, notice }. */
@@ -508,7 +509,7 @@ export const ACTIONS = {
     const item = ownedItem(actor, itemId);
     if (!Items.isManaged(item)) throw new RelayError(400, "Only items and spells can be removed from the web app");
     const notice = await Items.requestChange(user, actor, { kind: "remove", item });
-    return { actor: serializeActor(actor, user), notice };
+    return { actor: await serializeActor(actor, user), notice };
   },
 
   /** Body: { requestId }. Withdraws a pending request or dismisses a denied one. */
