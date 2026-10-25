@@ -252,15 +252,25 @@ function groupItems(list, serialize) {
   return items;
 }
 
-/**
- * The character's party (see party.js), or null. Party items are marked
- * `inParty`; their uses and attunement are shown but changed in Foundry.
- */
+/** What a stash needs to say about an item. To hit, damage, saves and uses depend on who wields it, so they're left out. */
+const PARTY_DETAILS = new Set(["Type", "Properties", "Rarity", "Attunement", "Weight", "Price"]);
+
+/** A party item: name, quantity, inventory facts and a description, marked `inParty`. */
+function serializePartyItem(item) {
+  const { id, name, type, img, updated, hasDescription, quantity, details } = serializeItem(item);
+  const kept = details.filter(d => PARTY_DETAILS.has(d.label));
+  return {
+    id, name, type, img, updated, hasDescription, quantity, inParty: true,
+    summary: [kept.find(d => d.label === "Type")?.value, kept.find(d => d.label === "Rarity")?.value].filter(Boolean).join(" · "),
+    details: kept
+  };
+}
+
+/** The character's party (see party.js), or null: its coin and items, nothing about any character. */
 function serializeParty(actor) {
   const party = Party.partyOf(actor);
   if (!party) return null;
-  const { weapons, equipment, consumables, tools, loot } = groupItems(Party.partyItems(party),
-    item => ({ ...serializeItem(item), removable: false, inParty: true }));
+  const { weapons, equipment, consumables, tools, loot } = groupItems(Party.partyItems(party), serializePartyItem);
   return {
     id: party.id,
     name: party.name,

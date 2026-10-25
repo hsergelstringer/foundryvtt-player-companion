@@ -479,15 +479,20 @@ function sheetView(a) {
   const tabs = availableTabs(a);
   if (!tabs.some(t => t.key === state.tab)) state.tab = "stats";
   const classes = a.classes.map(c => `${c.name}${c.subclass ? ` (${c.subclass})` : ""} ${c.levels}`).join(" / ");
+  // The party's inventory is the party's, so it gets the party's header and none of the character's vitals.
+  const party = state.tab === "inventory" && showingParty(a) ? a.party : null;
+  const subtitle = party
+    ? `Shared by ${party.members.map(m => m.name).join(", ")}`
+    : [classes || (a.level ? `Level ${a.level}` : ""), a.species].filter(Boolean).join(" · ");
 
   return el("div", { class: "sheet" },
     el("header", { class: "sheet-head" },
-      avatar(a.img, a.name, "portrait"),
+      avatar((party ?? a).img, (party ?? a).name, "portrait"),
       el("div", { class: "identity" },
-        el("h1", {}, a.name),
-        el("p", { class: "muted" }, [classes || (a.level ? `Level ${a.level}` : ""), a.species].filter(Boolean).join(" · "))),
+        el("h1", {}, (party ?? a).name),
+        el("p", { class: "muted" }, subtitle)),
       el("button", { class: "icon-button", onclick: openMenu, "aria-label": "Menu" }, icon("more"))),
-    vitalsView(a),
+    party ? null : vitalsView(a),
     el("section", { class: "tab-body" }, {
       stats: () => statsView(a),
       spells: () => spellsView(a),
@@ -774,16 +779,15 @@ function toggleOpen(item) {
 /**
  * A row: picture, name and a one-line summary, quick toggles on the right, and
  * a usage strip underneath that is always visible. Tapping the name opens the
- * details, activities, description and the remaining controls. A party
- * item's uses and attunement belong to the party, so they aren't shown as controls.
+ * details, activities, description and the remaining controls.
  */
 function itemRow(item, { meta = [], quick = [], usage = [], controls = [], actions = [], lead = null } = {}) {
   const open = state.open.has(openKey(item));
   const summary = [item.summary, ...meta].filter(Boolean).join(" · ");
   const quickItems = [quick].flat().filter(Boolean);
-  const usageItems = [...(item.inParty ? [] : usageStrip(item)), ...usage].filter(Boolean);
-  const controlItems = [item.inParty ? null : attunementControl(item), ...controls].filter(Boolean);
-  const actionItems = [...actions, item.inParty ? null : removeButton(item)].filter(Boolean);
+  const usageItems = [...usageStrip(item), ...usage].filter(Boolean);
+  const controlItems = [attunementControl(item), ...controls].filter(Boolean);
+  const actionItems = [...actions, removeButton(item)].filter(Boolean);
   return el("li", { class: `item ${open ? "open" : ""}` },
     el("div", { class: "item-main" },
       lead,
@@ -1158,8 +1162,10 @@ function gearSwitch(a) {
       }, label)));
 }
 
+const showingParty = a => !!a.party && state.gearView === "party";
+
 function inventoryView(a) {
-  if (a.party && state.gearView === "party") return [gearSwitch(a), partyView(a)];
+  if (showingParty(a)) return [gearSwitch(a), partyView(a)];
   const groups = GEAR_GROUPS;
   const any = groups.some(([key]) => a.items[key].length);
   return [
@@ -1258,9 +1264,7 @@ function partyView(a) {
   const { party } = a;
   const any = GEAR_GROUPS.some(([key]) => party.items[key].length);
   return [
-    el("p", { class: "muted hint" },
-      `${party.name}, shared by ${party.members.map(m => m.name).join(", ")}.`,
-      party.canEdit ? "" : " Only the GM can change it."),
+    party.canEdit ? null : el("p", { class: "muted hint" }, "Only the GM can change the party's inventory."),
     coinsView(party.currency, (coin, n) => act("partyCurrency", { [coin]: n }, s => { s.party.currency[coin] = n; }), !party.canEdit),
     party.canEdit ? el("button", { class: "add-button", onclick: () => moveCoinsSheet(a) }, "Move coins") : null,
     GEAR_GROUPS.filter(([key]) => party.items[key].length).map(([key, title]) => el("section", { class: "group" },

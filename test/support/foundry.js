@@ -366,6 +366,8 @@ export function installFoundry({ relayUrl = "", relaySecret = "" } = {}) {
     items: [
       { id: "rations", name: "Rations", type: "consumable", system: { quantity: 6, description: { value: "<p>One day of food.</p><section class=\"secret\"><p>Spoiled.</p></section>" } } },
       { id: "lantern", name: "Lantern", type: "equipment", system: { quantity: 1, equipped: false, description: { value: "" } } },
+      { id: "spear", name: "Spear", type: "weapon", labels: { toHit: "+4", damages: [{ label: "1d6 + 2 Piercing" }] },
+        system: { quantity: 1, rarity: "common", attunement: "optional", weight: { value: 3, units: "lb" }, uses: { max: 2, spent: 0 }, description: { value: "" } } },
       { id: "partyfeat", name: "Party Feature", type: "feat", system: {} }
     ]
   });

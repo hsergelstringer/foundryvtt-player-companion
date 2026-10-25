@@ -141,7 +141,7 @@ Moved items arrive unequipped and unattuned. Consumables and loot stack onto a m
 | `items` | `{ weapons, equipment, consumables, tools, loot, features, spells }`; see [items](#items) |
 | `itemChanges` | `{ mode, requests }`; `mode` is `approve`, `direct` or `off`, and `requests` are this character's waiting and denied requests |
 | `trackers` | `{ character, party, canCreate }`, each tracker with its value and whether this user can change (`canEdit`) or delete it (`canDelete`) |
-| `party` | The character's party, or `null`: `{ id, name, img, canEdit, members, currency, items, log }`. `members` are `{ id, name, img }`; `items` are `{ weapons, equipment, consumables, tools, loot }` of [items](#items) with `inParty: true`; `log` is the 20 latest changes, newest first, as `{ id, at, user, actor, text }` (`text` like `"gave 5 × Arrows"`). |
+| `party` | The character's party, or `null`: `{ id, name, img, canEdit, members, currency, items, log }`. `members` are `{ id, name, img }`; `items` are `{ weapons, equipment, consumables, tools, loot }`, each `{ id, name, type, img, updated, hasDescription, quantity, summary, details, inParty: true }`, where `details` are only type, properties, rarity, attunement, weight and price (to hit, damage, saves and uses depend on a character, so they're left out); `log` is the 20 latest changes, newest first, as `{ id, at, user, actor, text }` (`text` like `"gave 5 × Arrows"`). |
 
 ### Items
 

@@ -380,6 +380,13 @@ describe("party inventory", () => {
     assert.deepEqual(party.log, []);
   });
 
+  test("party items have inventory facts only, nothing that depends on a character", async () => {
+    const spear = partyItem(await sheet(), "Spear");
+    assert.equal(spear.summary, "Weapon · Common");
+    assert.deepEqual(spear.details.map(d => d.label), ["Type", "Rarity", "Attunement", "Weight"]);
+    for (const key of ["uses", "activityUses", "activities", "attunement", "attuned", "equipped", "removable"]) assert.ok(!(key in spear), key);
+  });
+
   test("a character outside the party has none, and can't reach it", async () => {
     const brann = await call("GET", "actors/brann", null, tokens.other);
     assert.equal(brann.data.party, null);
@@ -402,7 +409,7 @@ describe("party inventory", () => {
     assert.equal(world.isen.items.get("arrows").system.quantity, 15);
     const given = partyItem(data.actor, "Arrows");
     assert.equal(given.quantity, 5);
-    assert.equal(given.equipped, false, "arrives unequipped");
+    assert.equal(world.party.items.get(given.id).system.equipped, false, "arrives unequipped");
 
     ({ data } = await act("giveToParty", { itemId: "arrows" }));
     assert.equal(own("Arrows").length, 0);
