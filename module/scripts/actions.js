@@ -6,6 +6,8 @@
  * Written against dnd5e 4.x and 5.x; older data shapes are handled where cheap.
  */
 
+import * as Trackers from "./trackers.js";
+
 export class RelayError extends Error {
   constructor(status, message) {
     super(message);
@@ -165,7 +167,7 @@ function serializeSpellSlots(actor) {
   return slots;
 }
 
-export function serializeActor(actor) {
+export function serializeActor(actor, user) {
   const sys = actor.system;
   const attr = sys.attributes ?? {};
 
@@ -230,7 +232,8 @@ export function serializeActor(actor) {
     abilities,
     skills,
     spellSlots: serializeSpellSlots(actor),
-    items
+    items,
+    trackers: user ? Trackers.trackersFor(user, actor) : null
   };
 }
 
@@ -298,7 +301,7 @@ export const ACTIONS = {
   },
 
   getActor(user, { actorId }) {
-    return serializeActor(ownedActor(user, actorId));
+    return serializeActor(ownedActor(user, actorId), user);
   },
 
   /** Body: { value?, temp? } to set, or { damage } / { heal } to apply. */
@@ -327,7 +330,7 @@ export const ACTIONS = {
     if (!Object.keys(update).length) throw new RelayError(400, "Send value, temp, damage or heal");
 
     await actor.update(update);
-    return serializeActor(actor);
+    return serializeActor(actor, user);
   },
 
   async deathSaves(user, { actorId, success, failure }) {
@@ -336,20 +339,20 @@ export const ACTIONS = {
     if (success !== undefined) update["system.attributes.death.success"] = requireInt(success, "success", { min: 0, max: 3 });
     if (failure !== undefined) update["system.attributes.death.failure"] = requireInt(failure, "failure", { min: 0, max: 3 });
     await actor.update(update);
-    return serializeActor(actor);
+    return serializeActor(actor, user);
   },
 
   async inspiration(user, { actorId, value }) {
     const actor = ownedActor(user, actorId);
     await actor.update({ "system.attributes.inspiration": requireBool(value, "value") });
-    return serializeActor(actor);
+    return serializeActor(actor, user);
   },
 
   async exhaustion(user, { actorId, value }) {
     const actor = ownedActor(user, actorId);
     const max = CONFIG.DND5E.conditionTypes?.exhaustion?.levels ?? 6;
     await actor.update({ "system.attributes.exhaustion": requireInt(value, "value", { min: 0, max }) });
-    return serializeActor(actor);
+    return serializeActor(actor, user);
   },
 
   /** Body: { slot: "spell1".."spell9" | "pact", value } where value is slots remaining. */
@@ -359,7 +362,7 @@ export const ACTIONS = {
     const max = num(actor.system.spells?.[slot]?.max);
     if (!max) throw new RelayError(400, "This character has no slots of that level");
     await actor.update({ [`system.spells.${slot}.value`]: requireInt(value, "value", { min: 0, max }) });
-    return serializeActor(actor);
+    return serializeActor(actor, user);
   },
 
   /** Body: { itemId, value } where value is uses remaining. */
@@ -370,7 +373,7 @@ export const ACTIONS = {
     if (!uses) throw new RelayError(400, "That item has no limited uses");
     const remaining = requireInt(value, "value", { min: 0, max: uses.max });
     await item.update({ [uses.path]: uses.spent ? uses.max - remaining : remaining });
-    return serializeActor(actor);
+    return serializeActor(actor, user);
   },
 
   async itemQuantity(user, { actorId, itemId, value }) {
@@ -378,7 +381,7 @@ export const ACTIONS = {
     const item = ownedItem(actor, itemId);
     if (!("quantity" in item.system)) throw new RelayError(400, "That item has no quantity");
     await item.update({ "system.quantity": requireInt(value, "value", { min: 0, max: 99999 }) });
-    return serializeActor(actor);
+    return serializeActor(actor, user);
   },
 
   async itemEquipped(user, { actorId, itemId, value }) {
@@ -386,7 +389,7 @@ export const ACTIONS = {
     const item = ownedItem(actor, itemId);
     if (!("equipped" in item.system)) throw new RelayError(400, "That item cannot be equipped");
     await item.update({ "system.equipped": requireBool(value, "value") });
-    return serializeActor(actor);
+    return serializeActor(actor, user);
   },
 
   async spellPrepared(user, { actorId, itemId, value }) {
@@ -396,7 +399,7 @@ export const ACTIONS = {
     const prep = spellPreparation(item);
     if (!prep.toggleable) throw new RelayError(400, "That spell cannot be prepared or unprepared");
     await item.update(prep.update(requireBool(value, "value")));
-    return serializeActor(actor);
+    return serializeActor(actor, user);
   },
 
   /** Body: { classId, value } where value is hit dice remaining for that class. */
@@ -407,7 +410,7 @@ export const ACTIONS = {
     const levels = num(cls.system.levels);
     const spent = levels - requireInt(value, "value", { min: 0, max: levels });
     await cls.update(cls.system.hd ? { "system.hd.spent": spent } : { "system.hitDiceUsed": spent });
-    return serializeActor(actor);
+    return serializeActor(actor, user);
   },
 
   /** Body: any of { pp, gp, ep, sp, cp }. */
@@ -419,14 +422,51 @@ export const ACTIONS = {
     }
     if (!Object.keys(update).length) throw new RelayError(400, "Send at least one of pp, gp, ep, sp, cp");
     await actor.update(update);
-    return serializeActor(actor);
+    return serializeActor(actor, user);
   },
 
   /** Body: { kind: ability|save|skill|death|initiative, key?, mode?: normal|advantage|disadvantage }. Posts to chat. */
   async roll(user, { actorId, kind, key, mode }) {
     const actor = ownedActor(user, actorId);
     const result = await performRoll(actor, { kind, key, mode });
-    return { roll: result, actor: serializeActor(actor) };
+    return { roll: result, actor: serializeActor(actor, user) };
+  },
+
+  /**
+   * Body: { trackerId, scope: "actor" | "world", value }.
+   * "world" is a party tracker; actorId still names the character being viewed.
+   */
+  async setTracker(user, { actorId, trackerId, scope, value }) {
+    const actor = ownedActor(user, actorId);
+    const list = scope === "world" ? Trackers.partyTrackers() : Trackers.actorTrackers(actor);
+    const tracker = list.find(t => t.id === trackerId);
+    if (!tracker || !Trackers.canSee(user, tracker)) throw new RelayError(404, "Tracker not found");
+    if (!Trackers.canEditValue(user, tracker, actor)) throw new RelayError(403, "Only the GM can change that tracker");
+    if (tracker.type !== "text" && !Number.isFinite(Number(value))) throw new RelayError(400, "value must be a number");
+    if (scope === "world") await Trackers.setWorldValue(tracker.id, value);
+    else await Trackers.setActorValue(actor, tracker.id, value);
+    return serializeActor(actor, user);
+  },
+
+  /** Body: { name, type: counter|pips|clock|bands|text, min?, max?, description?, bands? }. */
+  async createTracker(user, { actorId, name, type, min, max, description, bands }) {
+    const actor = ownedActor(user, actorId);
+    if (!Trackers.canManagePersonal(user, actor)) throw new RelayError(403, "The GM hasn't allowed players to create trackers");
+    if (typeof name !== "string" || !name.trim()) throw new RelayError(400, "name is required");
+    if (type !== undefined && !(type in Trackers.TRACKER_TYPES)) throw new RelayError(400, "Unknown tracker type");
+    const existing = Object.values(actor.getFlag(Trackers.MODULE_ID, "trackers") ?? {}).filter(d => d?.name).length;
+    if (existing >= 50) throw new RelayError(400, "That character already has 50 trackers");
+    await Trackers.savePersonal(actor, { name, type, min, max, description, bands, playerEditable: true, visibility: "owner" });
+    return serializeActor(actor, user);
+  },
+
+  async deleteTracker(user, { actorId, trackerId }) {
+    const actor = ownedActor(user, actorId);
+    const tracker = Trackers.actorTrackers(actor).find(t => t.id === trackerId && t.source === "personal");
+    if (!tracker) throw new RelayError(404, "Tracker not found");
+    if (!Trackers.canManagePersonal(user, actor)) throw new RelayError(403, "The GM hasn't allowed players to remove trackers");
+    await Trackers.deletePersonal(actor, tracker.id);
+    return serializeActor(actor, user);
   },
 
   /** Body: { type: "short" | "long" }. Rests without a dialog; hit dice are not spent automatically. */
@@ -435,6 +475,6 @@ export const ACTIONS = {
     if (type === "short") await actor.shortRest({ dialog: false, chat: true });
     else if (type === "long") await actor.longRest({ dialog: false, chat: true, newDay: true });
     else throw new RelayError(400, "type must be short or long");
-    return serializeActor(actor);
+    return serializeActor(actor, user);
   }
 };

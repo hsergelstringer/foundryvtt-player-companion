@@ -1,5 +1,6 @@
 import { ACTIONS, RelayError } from "./actions.js";
 import { sha256Hex } from "./sha256.js";
+import { registerTrackerSettings, setupTrackers, TrackerWindow } from "./trackers.js";
 
 const MODULE_ID = "player-companion";
 const TOKEN_FLAG = "tokens";
@@ -208,6 +209,14 @@ for (const hook of ["createItem", "updateItem", "deleteItem", "createActiveEffec
   Hooks.on(hook, doc => notifyActor(actorOf(doc)));
 }
 
+// Party trackers and templates live in world settings, which can change any character's trackers.
+Hooks.on(`${MODULE_ID}.trackersChanged`, () => {
+  if (Relay.status !== "connected") return;
+  Relay.send({ type: "event", userIds: game.users.map(u => u.id), payload: { type: "trackersChanged" } });
+});
+
+setupTrackers();
+
 Hooks.on("updateUser", (user, changes) => {
   if (!foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) return;
   Tokens.invalidate();
@@ -325,6 +334,8 @@ Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "relaySecret", { scope: "client", config: false, type: String, default: "" });
   game.settings.register(MODULE_ID, "appUrl", { scope: "world", config: false, type: String, default: "" });
 
+  registerTrackerSettings();
+
   game.settings.registerMenu(MODULE_ID, "menu", {
     name: "Player Companion",
     label: "Open Player Companion",
@@ -334,7 +345,8 @@ Hooks.once("init", () => {
     restricted: false
   });
 
-  game.modules.get(MODULE_ID).api = { Relay, Tokens, actions: ACTIONS, openSettings: () => new RelaySettings().render({ force: true }) };
+  game.modules.get(MODULE_ID).api = { Relay, Tokens, actions: ACTIONS, openSettings: () => new RelaySettings().render({ force: true }),
+    openTrackers: view => TrackerWindow.open(view) };
 });
 
 Hooks.once("ready", () => {

@@ -18,6 +18,26 @@ Foundry modules run in the browser and can't listen for HTTP requests, so the mo
 - Prepare or unprepare spells, equip items, change quantities and currency
 - Take a short or long rest
 - See changes made in Foundry live
+- Update custom trackers, and add their own if the GM allows it
+
+## Trackers
+
+Custom trackers for anything the character sheet doesn't cover: stress, corruption, reputation, a doom clock, a monk's fate score.
+
+| Type | Shows as |
+| --- | --- |
+| Counter | A number with optional minimum and maximum |
+| Pips | A row of dots, like spell slots (1–20) |
+| Clock | A filling circle with segments (1–20) |
+| Banded counter | A counter whose ranges have names and effects, e.g. `3 \| Disciplined \| Allies crit on 18+` |
+| Text | A short note |
+
+- **Character trackers** belong to one character. The GM can add them with **templates**, which apply to every player character or only to the ones chosen. If the GM allows it, players can also add their own.
+- **Party trackers** are shared by everyone and shown in a small panel on the canvas. Click the panel to open the trackers window.
+- Each tracker can be **hidden from players** or **locked** so only the GM changes it. Hidden trackers never reach the web app, but they are only hidden from player screens inside Foundry, not kept secret from someone using the browser console.
+- Open the trackers window from the **Trackers** button in the Token controls toolbar or in a character sheet's title bar.
+
+Settings: **Players can create trackers** (world), **Show party trackers on the canvas** and **Party tracker panel position** (per person).
 
 ## Set up
 
@@ -82,10 +102,15 @@ All requests except `/api/health` need `Authorization: Bearer <token>`. A token 
 | POST | `/api/actors/:id/inspiration` | `{ "value": true }` |
 | POST | `/api/actors/:id/exhaustion` | `{ "value": 1 }` |
 | POST | `/api/actors/:id/rest` | `{ "type": "short" }` or `{ "type": "long" }` |
+| POST | `/api/actors/:id/setTracker` | `{ "trackerId": "…", "scope": "actor", "value": 3 }`; `scope` is `world` for party trackers |
+| POST | `/api/actors/:id/createTracker` | `{ "name": "Luck", "type": "pips", "max": 3 }`; also `min`, `description`, and `bands` for banded counters |
+| POST | `/api/actors/:id/deleteTracker` | `{ "trackerId": "…" }` (the player's own trackers only) |
 
 Every POST returns the updated sheet; `roll` returns `{ roll, actor }`.
 
-For live updates, open a WebSocket to `/api/events` and send `{"type":"auth","token":"…"}` first. You'll receive `{"type":"actorChanged","actorId":"…"}` whenever one of your characters changes, and `{"type":"foundry","connected":false}` when the GM's browser goes offline.
+Sheets include `trackers: { character, party, canCreate }`, with each tracker's value and whether the user can change or delete it.
+
+For live updates, open a WebSocket to `/api/events` and send `{"type":"auth","token":"…"}` first. You'll receive `{"type":"actorChanged","actorId":"…"}` whenever one of your characters changes, `{"type":"trackersChanged"}` when party trackers or templates change, and `{"type":"foundry","connected":false}` when the GM's browser goes offline.
 
 To add an action, add a function to `ACTIONS` in `module/scripts/actions.js`. It is reachable at `POST /api/actors/:id/<name>` with no relay changes.
 

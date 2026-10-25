@@ -159,7 +159,7 @@ label.check input { width: 20px; height: 20px; accent-color: var(--accent); }
 .stepper .value { min-width: 2ch; text-align: center; font-weight: 600; }
 
 .pips { display: inline-flex; gap: 6px; flex-wrap: wrap; }
-.pip { width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 50%; background: var(--pip); border: 2px solid var(--border); }
+.pip { display: inline-block; width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 50%; background: var(--pip); border: 2px solid var(--border); }
 .pip.on { background: var(--accent); border-color: var(--accent); }
 .pips.good .pip.on { background: var(--heal); border-color: var(--heal); }
 .pips.bad .pip.on { background: var(--danger); border-color: var(--danger); }
@@ -221,6 +221,30 @@ label.check input { width: 20px; height: 20px; accent-color: var(--accent); }
 
 .rest { display: flex; flex-direction: column; gap: 8px; }
 .rest-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* Trackers */
+
+.trackers { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.tracker { display: flex; flex-direction: column; gap: 6px; }
+.tracker-head { display: flex; align-items: center; gap: 8px; }
+.tracker-delete { margin-left: auto; min-height: 32px; padding: 0 10px; }
+.tracker-value { display: inline-flex; align-items: center; gap: 8px; }
+.tracker-value button { min-width: 40px; }
+.tracker-number { font-size: 1.4rem; font-weight: 700; min-width: 3ch; text-align: center; }
+.tracker-band, .tracker-description { margin: 0; font-size: 0.9rem; }
+.pips.locked .pip { cursor: default; }
+.clock {
+  display: inline-block; width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--text);
+  background: conic-gradient(var(--accent) var(--fill, 0deg), transparent 0);
+}
+.new-tracker { margin-top: 8px; }
+.new-tracker summary { cursor: pointer; font-weight: 600; }
+.new-tracker form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.new-tracker form input[type="text"], .new-tracker form .hint { grid-column: 1 / -1; }
+.new-tracker select {
+  font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; min-height: 40px;
+}
 
 /* Toasts */
 

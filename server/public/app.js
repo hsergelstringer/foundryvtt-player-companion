@@ -153,6 +153,7 @@ function connectEvents() {
       if (msg.connected) refresh();
     }
     else if (msg.type === "actorChanged" && msg.actorId === state.actorId && !state.busy) refresh();
+    else if (msg.type === "trackersChanged" && !state.busy) refresh();
     else if (msg.type === "error" && msg.status === 503) setFoundry(false);
   });
   socket.addEventListener("close", event => {
@@ -256,6 +257,7 @@ function render() {
   else view = sheetView(state.actor);
   root.replaceChildren(view);
   window.scrollTo(0, scrollY);
+  root.querySelector(".tabs .active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 function loginView() {
@@ -299,7 +301,8 @@ function sheetView(a) {
     ["skills", "Skills"],
     a.items.spells.length || a.spellSlots.length ? ["spells", "Spells"] : null,
     ["inventory", "Inventory"],
-    ["features", "Features"]
+    ["features", "Features"],
+    hasTrackers(a) ? ["trackers", "Trackers"] : null
   ].filter(Boolean);
   if (!tabs.some(([key]) => key === state.tab)) state.tab = "abilities";
 
@@ -321,7 +324,8 @@ function sheetView(a) {
       skills: () => skillsView(a),
       spells: () => spellsView(a),
       inventory: () => inventoryView(a),
-      features: () => featuresView(a)
+      features: () => featuresView(a),
+      trackers: () => trackersView(a)
     }[state.tab]()),
     el("footer", { class: "sheet-foot" },
       el("button", { class: "ghost", onclick: () => signOut() }, `Sign out ${state.me.user.name}`))
@@ -552,6 +556,93 @@ function featuresView(a) {
       a.items.features.length
         ? el("ul", { class: "items" }, a.items.features.map(item => itemRow(item, [usesControl(item)])))
         : el("p", { class: "muted" }, "No features."))
+  ];
+}
+
+/* -------------------------------------------- */
+/*  Trackers                                    */
+/* -------------------------------------------- */
+
+function hasTrackers(a) {
+  const t = a.trackers;
+  return !!t && (t.character.length > 0 || t.party.length > 0 || t.canCreate);
+}
+
+function setTracker(tracker, value) {
+  act("setTracker", { trackerId: tracker.id, scope: tracker.scope, value });
+}
+
+function trackerControl(t) {
+  const locked = !t.canEdit;
+  if (t.type === "text") {
+    return el("input", {
+      type: "text", value: t.value, maxlength: 500, disabled: locked, class: "tracker-text",
+      onchange: e => setTracker(t, e.target.value)
+    });
+  }
+  if (t.type === "pips") {
+    if (locked) return el("span", { class: "pips locked" }, Array.from({ length: t.max }, (_, i) => el("span", { class: i < t.value ? "pip on" : "pip" })));
+    return pips(t.value, t.max, v => setTracker(t, v));
+  }
+  const number = el("span", { class: "tracker-number" }, String(t.value), t.max !== null ? el("small", { class: "muted" }, `/${t.max}`) : null);
+  let clock = null;
+  if (t.type === "clock") {
+    clock = el("span", { class: "clock", "aria-hidden": "true" });
+    clock.style.setProperty("--fill", `${Math.round((t.value / t.max) * 360)}deg`);
+  }
+  if (locked) return el("span", { class: "tracker-value" }, clock, number);
+  return el("span", { class: "tracker-value" },
+    el("button", { disabled: t.min !== null && t.value <= t.min, onclick: () => setTracker(t, t.value - 1), "aria-label": "Decrease" }, "−"),
+    clock, number,
+    el("button", { disabled: t.max !== null && t.value >= t.max, onclick: () => setTracker(t, t.value + 1), "aria-label": "Increase" }, "+"));
+}
+
+function trackerCard(t) {
+  return el("li", { class: "tracker card" },
+    el("div", { class: "tracker-head" },
+      el("strong", {}, t.name),
+      !t.canEdit ? el("span", { class: "chip", title: "Only the GM can change this" }, "GM") : null,
+      t.canDelete ? el("button", {
+        class: "ghost tracker-delete", "aria-label": `Delete ${t.name}`,
+        onclick: () => window.confirm(`Delete ${t.name}?`) && act("deleteTracker", { trackerId: t.id })
+      }, "✕") : null),
+    trackerControl(t),
+    t.band ? el("p", { class: "tracker-band" }, el("strong", {}, `${t.band.label}. `), t.band.effect) : null,
+    t.description ? el("p", { class: "muted tracker-description" }, t.description) : null);
+}
+
+function newTrackerForm() {
+  const name = el("input", { type: "text", placeholder: "Name", maxlength: 60, required: true });
+  const type = el("select", {},
+    [["counter", "Counter"], ["pips", "Pips"], ["clock", "Clock"], ["text", "Text"]].map(([v, l]) => el("option", { value: v }, l)));
+  const max = el("input", { type: "number", inputmode: "numeric", placeholder: "Max", min: 1 });
+  return el("details", { class: "card new-tracker" },
+    el("summary", {}, "New tracker"),
+    el("form", {
+      onsubmit: event => {
+        event.preventDefault();
+        if (!name.value.trim()) return;
+        const body = { name: name.value.trim(), type: type.value };
+        if (max.value !== "") body.max = Number(max.value);
+        if (type.value === "counter") body.min = 0;
+        act("createTracker", body);
+      }
+    },
+      name, type, max,
+      el("button", { type: "submit", class: "primary" }, "Add"),
+      el("p", { class: "muted hint" }, "Pips and clocks use Max as their size. Counters start at 0.")));
+}
+
+function trackersView(a) {
+  const { character, party, canCreate } = a.trackers;
+  return [
+    el("section", { class: "group" },
+      el("h2", {}, a.name),
+      character.length ? el("ul", { class: "trackers" }, character.map(trackerCard)) : el("p", { class: "muted" }, "No character trackers."),
+      canCreate ? newTrackerForm() : null),
+    party.length ? el("section", { class: "group" },
+      el("h2", {}, "Party"),
+      el("ul", { class: "trackers" }, party.map(trackerCard))) : null
   ];
 }
 

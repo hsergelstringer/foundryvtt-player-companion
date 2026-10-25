@@ -1,0 +1,76 @@
+<div class="pc-trackers">
+  <nav class="pc-views">
+    {{#each views}}
+    <button type="button" class="{{#if active}}active{{/if}}" data-action="view" data-view="{{id}}">{{label}}</button>
+    {{/each}}
+  </nav>
+
+  {{#if trackers.length}}
+  <ul class="pc-tracker-list">
+    {{#if isTemplates}}
+    {{#each trackers}}
+    <li class="pc-tracker" data-id="{{id}}" data-scope="template">
+      <div class="pc-tracker-head">
+        <strong>{{name}}</strong>
+        <span class="hint">{{typeLabel}} · {{appliesLabel}}</span>
+        <span class="pc-tracker-manage">
+          <button type="button" data-action="edit" data-tooltip="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button type="button" data-action="remove" data-tooltip="Delete"><i class="fa-solid fa-trash"></i></button>
+        </span>
+      </div>
+      {{#if description}}<p class="hint">{{description}}</p>{{/if}}
+    </li>
+    {{/each}}
+    {{else}}
+    {{#each trackers}}
+    <li class="pc-tracker {{#if hidden}}hidden-tracker{{/if}}" data-id="{{id}}" data-scope="{{scope}}">
+      <div class="pc-tracker-head">
+        <strong>{{name}}</strong>
+        {{#if hidden}}<i class="fa-solid fa-eye-slash" data-tooltip="Hidden from players"></i>{{/if}}
+        {{#unless canEdit}}<i class="fa-solid fa-lock" data-tooltip="Only the GM can change this"></i>{{/unless}}
+        {{#if canManage}}
+        <span class="pc-tracker-manage">
+          <button type="button" data-action="edit" data-tooltip="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button type="button" data-action="remove" data-tooltip="Delete"><i class="fa-solid fa-trash"></i></button>
+        </span>
+        {{/if}}
+      </div>
+
+      <div class="pc-tracker-value">
+        {{#if isText}}
+        <input type="text" data-text-tracker data-id="{{id}}" data-scope="{{scope}}" value="{{value}}" maxlength="500" {{#unless canEdit}}disabled{{/unless}}>
+        {{/if}}
+        {{#if isPips}}
+        <span class="pc-pips">
+          {{#each pips}}
+          <button type="button" class="pc-pip {{#if on}}on{{/if}}" data-action="setPip" data-index="{{index}}" {{#unless ../canEdit}}disabled{{/unless}}></button>
+          {{/each}}
+        </span>
+        {{/if}}
+        {{#if isClock}}
+        <button type="button" data-action="step" data-steps="-1" {{#unless canEdit}}disabled{{/unless}}><i class="fa-solid fa-minus"></i></button>
+        <span class="pc-clock" style="{{clockStyle}}"></span>
+        <span class="pc-number">{{value}}/{{max}}</span>
+        <button type="button" data-action="step" data-steps="1" {{#unless canEdit}}disabled{{/unless}}><i class="fa-solid fa-plus"></i></button>
+        {{/if}}
+        {{#if isNumber}}
+        <button type="button" data-action="step" data-steps="-1" data-tooltip="Shift-click for 5" {{#unless canDecrease}}disabled{{/unless}}><i class="fa-solid fa-minus"></i></button>
+        <span class="pc-number">{{value}}{{#if hasMax}}<span class="hint">/{{max}}</span>{{/if}}</span>
+        <button type="button" data-action="step" data-steps="1" data-tooltip="Shift-click for 5" {{#unless canIncrease}}disabled{{/unless}}><i class="fa-solid fa-plus"></i></button>
+        {{/if}}
+      </div>
+
+      {{#if band}}<p class="pc-band"><strong>{{band.label}}.</strong> {{band.effect}}</p>{{/if}}
+      {{#if description}}<p class="hint">{{description}}</p>{{/if}}
+    </li>
+    {{/each}}
+    {{/if}}
+  </ul>
+  {{else}}
+  <p class="hint pc-empty">{{emptyText}}</p>
+  {{/if}}
+
+  {{#if canCreate}}
+  <button type="button" class="pc-create" data-action="create"><i class="fa-solid fa-plus"></i> {{#if isTemplates}}New template{{else}}New tracker{{/if}}</button>
+  {{/if}}
+</div>
