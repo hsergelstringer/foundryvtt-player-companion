@@ -1,6 +1,6 @@
 # Player Companion
 
-Lets players manage their D&D 5e characters from outside Foundry, on a phone-friendly web app or any app that uses the REST API.
+Lets players manage their D&D 5e characters from outside Foundry, on a phone-friendly web app or any app that uses the REST API. It's meant for in-person games: players roll real dice at the table and use the app to keep the sheet up to date, so it doesn't roll anything.
 
 ```
  player's phone ──HTTPS/WSS──▶  relay server  ◀──WSS──  GM's browser (Foundry + module)
@@ -13,7 +13,6 @@ Foundry modules run in the browser and can't listen for HTTP requests, so the mo
 
 - See their character: HP, AC, initiative, speed, proficiency, spell DC, abilities, saves, skills, conditions, spells, inventory and features (with descriptions)
 - Apply damage (temp HP is used first) or healing, set HP or temp HP
-- Roll ability checks, saves, skills, death saves and initiative, with advantage or disadvantage. Rolls post to Foundry chat as the character.
 - Track spell slots, item and feature uses, hit dice, death saves, exhaustion and Heroic Inspiration
 - Prepare or unprepare spells, equip items, change quantities and currency
 - Take a short or long rest
@@ -105,7 +104,6 @@ All requests except `/api/health` need `Authorization: Bearer <token>`. A token 
 | GET | `/api/me` | Returns the user and their characters |
 | GET | `/api/actors/:id` | Returns the sheet |
 | POST | `/api/actors/:id/hp` | `{ "damage": 7 }`, `{ "heal": 5 }`, `{ "value": 20 }`, `{ "temp": 5 }` |
-| POST | `/api/actors/:id/roll` | `{ "kind": "skill", "key": "prc", "mode": "advantage" }`; `kind` is `ability`, `save`, `skill`, `death` or `initiative` |
 | POST | `/api/actors/:id/spellSlot` | `{ "slot": "spell3", "value": 1 }` (slots remaining; `pact` for pact slots) |
 | POST | `/api/actors/:id/itemUses` | `{ "itemId": "…", "value": 2 }` (uses remaining) |
 | POST | `/api/actors/:id/itemQuantity` | `{ "itemId": "…", "value": 3 }` |
@@ -126,7 +124,7 @@ All requests except `/api/health` need `Authorization: Bearer <token>`. A token 
 | POST | `/api/actors/:id/removeItem` | `{ "itemId": "…" }`; removes the item, or asks the GM to |
 | POST | `/api/actors/:id/cancelItemRequest` | `{ "requestId": "…" }`; withdraws a waiting request or dismisses a denied one |
 
-Every POST returns the updated sheet, except: `roll` returns `{ roll, actor }`, `addItem` and `removeItem` return `{ actor, notice }`, and the two search actions return search data.
+Every POST returns the updated sheet, except: `addItem` and `removeItem` return `{ actor, notice }`, and the two search actions return search data.
 
 Sheets include `trackers: { character, party, canCreate }`, with each tracker's value and whether the user can change or delete it, and `itemChanges: { mode, requests }`, with the character's waiting and denied item requests.
 
@@ -138,7 +136,6 @@ To add an action, add a function to `ACTIONS` in `module/scripts/actions.js`. It
 
 - Needs a logged-in GM. If you want it always on, leave a GM browser open on a spare machine.
 - Built against dnd5e 4.x/5.x data shapes. It has been tested against a mocked dnd5e actor, not yet a live world.
-- No activity or attack use yet (dnd5e activities open dialogs that need a person in the GM's browser to answer).
 - Short rests don't spend hit dice. Players lower the count after rolling at the table.
 
 ## Releasing

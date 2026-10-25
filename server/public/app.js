@@ -13,7 +13,6 @@ const state = {
   actor: null,
   actorId: null,
   tab: "abilities",
-  rollMode: "normal",
   busy: false,
   error: null,
   foundry: true,
@@ -87,11 +86,7 @@ async function act(action, body = {}) {
   document.body.classList.add("busy");
   try {
     const data = await api("POST", `actors/${state.actorId}/${action}`, body);
-    if (action === "roll") {
-      state.actor = data.actor;
-      showRoll(body, data.roll);
-    }
-    else if (data.notice) {
+    if (data.notice) {
       state.actor = data.actor;
       toast(data.notice);
     }
@@ -114,22 +109,6 @@ function handleError(err) {
   }
   if (err.status === 503) state.foundry = false;
   toast(err.message, "error");
-}
-
-function showRoll(request, roll) {
-  const a = state.actor;
-  let label = "Roll";
-  if (request.kind === "skill") label = a.skills.find(s => s.key === request.key)?.label ?? request.key;
-  else if (request.kind === "ability") label = `${a.abilities.find(x => x.key === request.key)?.label ?? request.key} check`;
-  else if (request.kind === "save") label = `${a.abilities.find(x => x.key === request.key)?.label ?? request.key} save`;
-  else if (request.kind === "death") label = "Death save";
-  else if (request.kind === "initiative") label = "Initiative";
-  if (roll?.total === null || roll?.total === undefined) {
-    toast(`${label}: ${roll?.note ?? "rolled in Foundry"}`);
-    return;
-  }
-  const dice = roll.dice?.length ? ` (${roll.dice.join(", ")})` : "";
-  toast(`${label}: ${roll.total}${dice}`, "roll");
 }
 
 /* -------------------------------------------- */
@@ -387,8 +366,7 @@ function vitalsView(a) {
         el("button", { class: "ghost", onclick: () => setExact("temp", a.hp.temp, "Temporary hit points") }, "Temp"))),
     el("div", { class: "stats" },
       stat("AC", a.ac),
-      el("button", { class: "stat", onclick: () => act("roll", { kind: "initiative" }) },
-        el("span", { class: "label" }, "Init"), el("span", { class: "num" }, signed(a.initiative))),
+      stat("Init", signed(a.initiative)),
       stat("Speed", `${a.speed.walk}${a.speed.units === "ft" ? " ft" : ` ${a.speed.units}`}`),
       stat("Prof", signed(a.proficiency)),
       a.spellcasting.dc ? stat("DC", a.spellcasting.dc) : null),
@@ -421,49 +399,26 @@ function deathSavesView(a) {
   return el("div", { class: "death" },
     el("strong", {}, "Death saves"),
     el("span", {}, "Successes ", pips(a.death.success, 3, v => act("deathSaves", { success: v }), "good")),
-    el("span", {}, "Failures ", pips(a.death.failure, 3, v => act("deathSaves", { failure: v }), "bad")),
-    el("button", { class: "primary", onclick: () => act("roll", { kind: "death" }) }, "Roll death save"));
+    el("span", {}, "Failures ", pips(a.death.failure, 3, v => act("deathSaves", { failure: v }), "bad")));
 }
-
-function rollModeView() {
-  return el("div", { class: "segmented", role: "radiogroup", "aria-label": "Roll mode" },
-    [["disadvantage", "Dis"], ["normal", "Normal"], ["advantage", "Adv"]].map(([mode, label]) =>
-      el("button", {
-        class: state.rollMode === mode ? "active" : "",
-        role: "radio",
-        "aria-checked": String(state.rollMode === mode),
-        onclick: () => { state.rollMode = mode; render(); }
-      }, label)));
-}
-
-const roll = (kind, key) => act("roll", { kind, key, mode: state.rollMode });
 
 function abilitiesView(a) {
-  return [
-    rollModeView(),
-    el("div", { class: "abilities" }, a.abilities.map(ab =>
-      el("div", { class: "ability card" },
-        el("span", { class: "abbr" }, ab.abbreviation.toUpperCase()),
-        el("button", { class: "mod", onclick: () => roll("ability", ab.key), "aria-label": `${ab.label} check` }, signed(ab.mod)),
-        el("span", { class: "score muted" }, String(ab.value)),
-        el("button", { class: `save ${ab.proficient ? "prof" : ""}`, onclick: () => roll("save", ab.key) },
-          `Save ${signed(ab.save)}`)))),
-    el("p", { class: "muted hint" }, "Tap a modifier for a check, or Save for a saving throw. Results post to Foundry chat.")
-  ];
+  return el("div", { class: "abilities" }, a.abilities.map(ab =>
+    el("div", { class: "ability card", "aria-label": ab.label },
+      el("span", { class: "abbr" }, ab.abbreviation.toUpperCase()),
+      el("span", { class: "mod" }, signed(ab.mod)),
+      el("span", { class: "score muted" }, String(ab.value)),
+      el("span", { class: `save ${ab.proficient ? "prof" : ""}`, title: ab.proficient ? "Proficient" : null }, `Save ${signed(ab.save)}`))));
 }
 
 function skillsView(a) {
   const marks = { 0: "○", 0.5: "◐", 1: "●", 2: "◉" };
-  return [
-    rollModeView(),
-    el("ul", { class: "skills" }, a.skills.map(s =>
-      el("li", {},
-        el("button", { class: "skill", onclick: () => roll("skill", s.key) },
-          el("span", { class: `prof-mark p${String(s.proficiency).replace(".", "")}` }, marks[s.proficiency] ?? "○"),
-          el("span", { class: "name" }, s.label, el("small", { class: "muted" }, ` ${s.ability.toUpperCase()}`)),
-          el("span", { class: "passive muted" }, `(${s.passive})`),
-          el("span", { class: "total" }, signed(s.total))))))
-  ];
+  return el("ul", { class: "skills" }, a.skills.map(s =>
+    el("li", { class: "skill" },
+      el("span", { class: `prof-mark p${String(s.proficiency).replace(".", "")}` }, marks[s.proficiency] ?? "○"),
+      el("span", { class: "name" }, s.label, el("small", { class: "muted" }, ` ${s.ability.toUpperCase()}`)),
+      el("span", { class: "passive muted", title: "Passive" }, `(${s.passive})`),
+      el("span", { class: "total" }, signed(s.total)))));
 }
 
 function itemRow(item, extras = []) {
@@ -735,7 +690,7 @@ function featuresView(a) {
       el("div", { class: "rest-buttons" },
         el("button", { onclick: () => window.confirm("Take a short rest?") && act("rest", { type: "short" }) }, "Short rest"),
         el("button", { onclick: () => window.confirm("Take a long rest?") && act("rest", { type: "long" }) }, "Long rest")),
-      el("p", { class: "muted hint" }, "Short rests don't spend hit dice here. Roll them at the table and lower the count above.")),
+      el("p", { class: "muted hint" }, "Short rests don't spend hit dice here. Lower the count above for the dice you spend at the table.")),
     el("section", { class: "group" },
       el("h2", {}, "Features"),
       a.items.features.length

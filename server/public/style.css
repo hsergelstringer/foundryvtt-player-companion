@@ -174,22 +174,19 @@ label.check input { width: 20px; height: 20px; accent-color: var(--accent); }
 .tabs button.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .tab-body { display: flex; flex-direction: column; gap: 12px; }
 
-.segmented { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-.segmented button { flex: 1; border: 0; border-radius: 0; background: var(--surface); }
-.segmented button.active { background: var(--accent); color: var(--accent-text); }
 
 /* Abilities and skills */
 
 .abilities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .ability { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; }
 .ability .abbr { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); }
-.ability .mod { font-size: 1.6rem; font-weight: 700; width: 100%; background: none; border: 0; padding: 0; }
+.ability .mod { font-size: 1.6rem; font-weight: 700; }
 .ability .score { font-size: 0.85rem; }
-.ability .save { width: 100%; font-size: 0.85rem; }
+.ability .save { width: 100%; font-size: 0.85rem; text-align: center; border: 1px solid transparent; border-radius: 8px; padding: 4px 0; }
 .ability .save.prof { border-color: var(--accent); color: var(--accent); }
 
 .skills { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
-.skill { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; background: var(--surface); }
+.skill { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
 .skill .name { flex: 1; }
 .skill .total { font-weight: 700; min-width: 3ch; text-align: right; }
 .skill .passive { font-size: 0.8rem; }
@@ -283,7 +280,6 @@ button.danger-text { color: var(--danger); border-color: var(--danger); }
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); transition: opacity 0.5s; max-width: 100%;
 }
-.toast.roll { background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 1.1rem; }
 .toast.error { background: var(--danger); color: #fff; }
 .toast.hide { opacity: 0; }
 

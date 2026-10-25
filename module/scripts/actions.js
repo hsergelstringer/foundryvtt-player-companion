@@ -243,45 +243,6 @@ export function serializeActor(actor, user) {
 }
 
 /* -------------------------------------------- */
-/*  Rolls                                       */
-/* -------------------------------------------- */
-
-/** Roll without opening a dialog in the GM's browser. Returns the first roll, if any. */
-async function performRoll(actor, { kind, key, mode }) {
-  const advantage = mode === "advantage";
-  const disadvantage = mode === "disadvantage";
-  const dialog = { configure: false };
-  let result;
-
-  switch (kind) {
-    case "ability":
-      if (!(key in CONFIG.DND5E.abilities)) throw new RelayError(400, "Unknown ability");
-      result = await actor.rollAbilityCheck({ ability: key, advantage, disadvantage }, dialog);
-      break;
-    case "save":
-      if (!(key in CONFIG.DND5E.abilities)) throw new RelayError(400, "Unknown ability");
-      result = await actor.rollSavingThrow({ ability: key, advantage, disadvantage }, dialog);
-      break;
-    case "skill":
-      if (!(key in CONFIG.DND5E.skills)) throw new RelayError(400, "Unknown skill");
-      result = await actor.rollSkill({ skill: key, advantage, disadvantage }, dialog);
-      break;
-    case "death":
-      result = await actor.rollDeathSave({}, dialog);
-      break;
-    case "initiative":
-      await actor.rollInitiative({ createCombatants: false });
-      return { total: null, formula: null, note: "Rolled into the current combat, if there is one" };
-    default:
-      throw new RelayError(400, "kind must be ability, save, skill, death or initiative");
-  }
-
-  const roll = Array.isArray(result) ? result[0] : result;
-  if (!roll) return { total: null, formula: null };
-  return { total: roll.total, formula: roll.formula, dice: roll.dice.flatMap(d => d.results.map(r => r.result)) };
-}
-
-/* -------------------------------------------- */
 /*  Actions                                     */
 /* -------------------------------------------- */
 
@@ -428,13 +389,6 @@ export const ACTIONS = {
     if (!Object.keys(update).length) throw new RelayError(400, "Send at least one of pp, gp, ep, sp, cp");
     await actor.update(update);
     return serializeActor(actor, user);
-  },
-
-  /** Body: { kind: ability|save|skill|death|initiative, key?, mode?: normal|advantage|disadvantage }. Posts to chat. */
-  async roll(user, { actorId, kind, key, mode }) {
-    const actor = ownedActor(user, actorId);
-    const result = await performRoll(actor, { kind, key, mode });
-    return { roll: result, actor: serializeActor(actor, user) };
   },
 
   /**
