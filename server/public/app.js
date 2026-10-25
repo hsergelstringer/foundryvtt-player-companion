@@ -80,7 +80,10 @@ function copyRich(from, to) {
   }
 }
 
-/** Descriptions of the character's items, fetched when a row is first opened. Key → data, or "loading". */
+/**
+ * Descriptions of the character's items, fetched when a row is first opened.
+ * Key → data, "loading", or "failed" (retried when the row is opened again).
+ */
 const descriptions = new Map();
 
 function richDescription({ html, text }) {
@@ -104,12 +107,14 @@ function description(item, loading = false) {
 
   const key = `${state.actorId}:${item.id}:${item.updated ?? ""}`;
   const cached = descriptions.get(key);
+  // Remember failures: retrying on every render would loop while Foundry is offline.
+  if (cached === "failed") return el("p", { class: "description muted" }, "Couldn't load the description. Close and reopen to try again.");
   if (cached && cached !== "loading") return richDescription(cached);
   if (!cached) {
     descriptions.set(key, "loading");
     api("POST", `actors/${state.actorId}/itemDescription`, { itemId: item.id })
       .then(data => descriptions.set(key, data))
-      .catch(err => { descriptions.delete(key); handleError(err); })
+      .catch(err => { descriptions.set(key, "failed"); handleError(err); })
       .finally(render);
   }
   return waiting;
@@ -714,6 +719,9 @@ function statsView(a) {
 
 function toggleOpen(id) {
   state.open.has(id) ? state.open.delete(id) : state.open.add(id);
+  for (const [key, value] of descriptions) {
+    if (value === "failed" && key.startsWith(`${state.actorId}:${id}:`)) descriptions.delete(key);
+  }
   render();
 }
 
