@@ -615,7 +615,9 @@ function newTrackerForm() {
   const name = el("input", { type: "text", placeholder: "Name", maxlength: 60, required: true });
   const type = el("select", {},
     [["counter", "Counter"], ["pips", "Pips"], ["clock", "Clock"], ["text", "Text"]].map(([v, l]) => el("option", { value: v }, l)));
-  const max = el("input", { type: "number", inputmode: "numeric", placeholder: "Max", min: 1 });
+  // inputmode "numeric" hides the minus key on phones, so these use the full keyboard.
+  const min = el("input", { type: "number", step: 1, placeholder: "No min", value: "0", "aria-label": "Minimum" });
+  const max = el("input", { type: "number", step: 1, placeholder: "No max", "aria-label": "Maximum" });
   return el("details", { class: "card new-tracker" },
     el("summary", {}, "New tracker"),
     el("form", {
@@ -624,13 +626,15 @@ function newTrackerForm() {
         if (!name.value.trim()) return;
         const body = { name: name.value.trim(), type: type.value };
         if (max.value !== "") body.max = Number(max.value);
-        if (type.value === "counter") body.min = 0;
+        if (type.value === "counter" && min.value !== "") body.min = Number(min.value);
         act("createTracker", body);
       }
     },
-      name, type, max,
+      name, type,
+      el("label", { class: "field" }, el("span", { class: "muted" }, "Min"), min),
+      el("label", { class: "field" }, el("span", { class: "muted" }, "Max"), max),
       el("button", { type: "submit", class: "primary" }, "Add"),
-      el("p", { class: "muted hint" }, "Pips and clocks use Max as their size. Counters start at 0.")));
+      el("p", { class: "muted hint" }, "Counters can go negative; clear Min or Max for no limit. Pips and clocks ignore Min and use Max as their size.")));
 }
 
 function trackersView(a) {

@@ -240,7 +240,9 @@ label.check input { width: 20px; height: 20px; accent-color: var(--accent); }
 .new-tracker { margin-top: 8px; }
 .new-tracker summary { cursor: pointer; font-weight: 600; }
 .new-tracker form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-.new-tracker form input[type="text"], .new-tracker form .hint { grid-column: 1 / -1; }
+.new-tracker form input[type="text"], .new-tracker form .hint, .new-tracker form button { grid-column: 1 / -1; }
+.new-tracker .field { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
+.new-tracker .field input { width: 100%; }
 .new-tracker select {
   font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border);
   border-radius: 8px; padding: 8px 10px; min-height: 40px;

@@ -282,11 +282,11 @@ async function editDefinition(tracker = {}, kind = "actor") {
       <div class="form-group"><label>Name</label><div class="form-fields">
         <input type="text" name="name" value="${esc(tracker.name)}" maxlength="60" required autofocus></div></div>
       <div class="form-group"><label>Type</label><div class="form-fields"><select name="type">${options}</select></div></div>
-      <div class="form-group"><label>Minimum</label><div class="form-fields">
-        <input type="number" name="min" value="${tracker.min ?? ""}" placeholder="none"></div></div>
-      <div class="form-group"><label>Maximum</label><div class="form-fields">
-        <input type="number" name="max" value="${tracker.max ?? ""}" placeholder="none"></div></div>
-      <p class="hint">Pips and clocks use the maximum as their size (1–20). Counters can leave either bound empty.</p>
+      <div class="form-group"><label>Range</label><div class="form-fields">
+        <input type="number" name="min" value="${tracker.min ?? ""}" step="1" placeholder="No min" aria-label="Minimum">
+        <span class="pc-range-to">to</span>
+        <input type="number" name="max" value="${tracker.max ?? ""}" step="1" placeholder="No max" aria-label="Maximum"></div></div>
+      <p class="hint">Counters can go negative, and either end can be left empty. Pips and clocks ignore the minimum and use the maximum as their size (1–20).</p>
       <div class="form-group stacked"><label>Bands (banded counters only)</label>
         <textarea name="bands" rows="4" placeholder="3 | Disciplined | Allies within 30 ft crit on 18+&#10;-1 | In Balance&#10;-3 | Chaos">${esc(formatBands(tracker.bands))}</textarea>
         <p class="hint">One per line: <code>from | name | effect</code>. Each band runs from its number up to the next band.</p></div>
@@ -307,7 +307,7 @@ async function editDefinition(tracker = {}, kind = "actor") {
 
   return DialogV2.prompt({
     window: { title: tracker.id ? `Edit ${tracker.name}` : "New tracker", icon: "fa-solid fa-list-check" },
-    position: { width: 460 },
+    position: { width: 520 },
     content,
     ok: {
       label: "Save",

@@ -26,7 +26,7 @@ Custom trackers for anything the character sheet doesn't cover: stress, corrupti
 
 | Type | Shows as |
 | --- | --- |
-| Counter | A number with optional minimum and maximum |
+| Counter | A number with optional minimum and maximum, which can be negative |
 | Pips | A row of dots, like spell slots (1–20) |
 | Clock | A filling circle with segments (1–20) |
 | Banded counter | A counter whose ranges have names and effects, e.g. `3 \| Disciplined \| Allies crit on 18+` |
