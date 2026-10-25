@@ -8,6 +8,7 @@
 
 import { RelayError } from "./errors.js";
 import * as Items from "./items.js";
+import * as Party from "./party.js";
 import { activityUses, itemFacts } from "./details.js";
 import { describe } from "./text.js";
 import { characterTraits } from "./traits.js";
@@ -35,6 +36,19 @@ function requireBool(value, name) {
   if (typeof value !== "boolean") throw new RelayError(400, `${name} must be true or false`);
   return value;
 }
+
+/** At least one of pp, gp, ep, sp, cp, each a whole number of coins. */
+function requireCoins(coins) {
+  const out = {};
+  for (const key of ["pp", "gp", "ep", "sp", "cp"]) {
+    if (coins[key] !== undefined) out[key] = requireInt(coins[key], key, { min: 0, max: 9_999_999 });
+  }
+  if (!Object.keys(out).length) throw new RelayError(400, "Send at least one of pp, gp, ep, sp, cp");
+  return out;
+}
+
+const optionalQuantity = value =>
+  (value === undefined || value === null ? null : requireInt(value, "quantity", { min: 1, max: 99999 }));
 
 function ownedActor(user, actorId) {
   const actor = game.actors.get(String(actorId ?? ""));
@@ -227,6 +241,38 @@ function serializeSpellcasting(actor) {
   };
 }
 
+/** Items sorted into the sheet's groups. */
+function groupItems(list, serialize) {
+  const items = { weapons: [], equipment: [], consumables: [], tools: [], loot: [], features: [], spells: [] };
+  for (const item of list) {
+    const group = ITEM_GROUPS[item.type];
+    if (group) items[group].push(serialize(item));
+  }
+  for (const entries of Object.values(items)) entries.sort((a, b) => (a.level ?? 0) - (b.level ?? 0) || a.name.localeCompare(b.name));
+  return items;
+}
+
+/**
+ * The character's party (see party.js), or null. Party items are marked
+ * `inParty`; their uses and attunement are shown but changed in Foundry.
+ */
+function serializeParty(actor) {
+  const party = Party.partyOf(actor);
+  if (!party) return null;
+  const { weapons, equipment, consumables, tools, loot } = groupItems(Party.partyItems(party),
+    item => ({ ...serializeItem(item), removable: false, inParty: true }));
+  return {
+    id: party.id,
+    name: party.name,
+    img: imageUrl(party.img),
+    canEdit: Party.partyMode() === "edit",
+    members: Party.membersOf(party).map(m => ({ id: m.id, name: m.name, img: imageUrl(m.img) })),
+    currency: Object.fromEntries(Party.COINS.map(k => [k, num(party.system.currency?.[k])])),
+    items: { weapons, equipment, consumables, tools, loot },
+    log: Party.partyLog(party).slice(0, 20)
+  };
+}
+
 export function serializeActor(actor, user) {
   const sys = actor.system;
   const attr = sys.attributes ?? {};
@@ -257,12 +303,7 @@ export function serializeActor(actor, user) {
     };
   });
 
-  const items = { weapons: [], equipment: [], consumables: [], tools: [], loot: [], features: [], spells: [] };
-  for (const item of actor.items) {
-    const group = ITEM_GROUPS[item.type];
-    if (group) items[group].push(serializeItem(item));
-  }
-  for (const list of Object.values(items)) list.sort((a, b) => (a.level ?? 0) - (b.level ?? 0) || a.name.localeCompare(b.name));
+  const items = groupItems(actor.items, serializeItem);
 
   const hp = attr.hp ?? {};
   return {
@@ -298,7 +339,8 @@ export function serializeActor(actor, user) {
         quantity: r.quantity, itemId: r.itemId, reason: r.reason ?? null, userName: r.userName
       }))
     },
-    trackers: user ? Trackers.trackersFor(user, actor) : null
+    trackers: user ? Trackers.trackersFor(user, actor) : null,
+    party: serializeParty(actor)
   };
 }
 
@@ -463,11 +505,7 @@ export const ACTIONS = {
   /** Body: any of { pp, gp, ep, sp, cp }. */
   async currency(user, { actorId, ...coins }) {
     const actor = ownedActor(user, actorId);
-    const update = {};
-    for (const key of ["pp", "gp", "ep", "sp", "cp"]) {
-      if (coins[key] !== undefined) update[`system.currency.${key}`] = requireInt(coins[key], key, { min: 0, max: 9_999_999 });
-    }
-    if (!Object.keys(update).length) throw new RelayError(400, "Send at least one of pp, gp, ep, sp, cp");
+    const update = Object.fromEntries(Object.entries(requireCoins(coins)).map(([k, v]) => [`system.currency.${k}`, v]));
     await actor.update(update);
     return serializeActor(actor, user);
   },
@@ -568,6 +606,48 @@ export const ACTIONS = {
     const actor = ownedActor(user, actorId);
     await Items.cancelRequest(actor, String(requestId ?? ""));
     return serializeActor(actor, user);
+  },
+
+  /** Body: { itemId, quantity? }. Moves one of the character's items, or some of a stack, to the party. Returns { actor, notice }. */
+  async giveToParty(user, { actorId, itemId, quantity }) {
+    const actor = ownedActor(user, actorId);
+    const notice = await Party.give(user, actor, String(itemId ?? ""), optionalQuantity(quantity));
+    return { actor: serializeActor(actor, user), notice };
+  },
+
+  /** Body: { itemId, quantity? } with a party item's id. Returns { actor, notice }. */
+  async takeFromParty(user, { actorId, itemId, quantity }) {
+    const actor = ownedActor(user, actorId);
+    const notice = await Party.take(user, actor, String(itemId ?? ""), optionalQuantity(quantity));
+    return { actor: serializeActor(actor, user), notice };
+  },
+
+  /** Body: { itemId, value } with a party item's id. */
+  async partyQuantity(user, { actorId, itemId, value }) {
+    const actor = ownedActor(user, actorId);
+    await Party.setQuantity(user, actor, String(itemId ?? ""), requireInt(value, "value", { min: 0, max: 99999 }));
+    return serializeActor(actor, user);
+  },
+
+  /** Body: any of { pp, gp, ep, sp, cp }. Sets the party's coin, e.g. for treasure found. */
+  async partyCurrency(user, { actorId, ...coins }) {
+    const actor = ownedActor(user, actorId);
+    await Party.setCoins(user, actor, requireCoins(coins));
+    return serializeActor(actor, user);
+  },
+
+  /** Body: { direction: "toParty" | "fromParty", pp?, gp?, ep?, sp?, cp? }. Returns { actor, notice }. */
+  async moveCurrency(user, { actorId, direction, ...coins }) {
+    const actor = ownedActor(user, actorId);
+    if (direction !== "toParty" && direction !== "fromParty") throw new RelayError(400, "direction must be toParty or fromParty");
+    const notice = await Party.moveCoins(user, actor, direction, requireCoins(coins));
+    return { actor: serializeActor(actor, user), notice };
+  },
+
+  /** Body: { itemId } with a party item's id. Its description, as { id, html, text }. */
+  async partyItemDescription(user, { actorId, itemId }) {
+    const item = Party.partyItem(ownedActor(user, actorId), String(itemId ?? ""));
+    return { id: item.id, ...(await itemDescription(item, user)) };
   },
 
   /** Body: { type: "short" | "long" }. Rests without a dialog; hit dice are not spent automatically. */

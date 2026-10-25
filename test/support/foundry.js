@@ -347,14 +347,33 @@ export function installFoundry({ relayUrl = "", relaySecret = "" } = {}) {
         system: { uses: { max: 2, spent: 1 },
           activities: [{ id: "turn", name: "Turn Undead", labels: { save: "DC 14 Wisdom" } }, { id: "wrath", name: "Wrath of the Storm", uses: { max: 3, spent: 1, recovery: [{ period: "lr" }] }, labels: {} }],
           description: { value: "<p onclick=\"alert(1)\">Holy power<script>alert(2)</script><img src=x onerror=alert(3)> [[/save dex 14]] and {@damage 2d8} thunder.</p>" } } },
+      { id: "arrows", name: "Arrows", type: "consumable", _stats: { compendiumSource: "Compendium.dnd5e.items.Item.arrows" },
+        system: { quantity: 20, equipped: true, description: { value: "" } } },
+      { id: "rope", name: "Rope", type: "equipment", system: { quantity: 1, equipped: false, description: { value: "" } } },
       { id: "bolt", name: "Guiding Bolt", type: "spell", labels: { activation: "Action", range: "120 ft", components: { full: "V, S" }, duration: "1 Round" },
         system: { level: 1, school: "evo", method: "spell", prepared: 1, properties: new Set(), description: { value: "<p>{@damage 4d6} radiant.</p>" } } }
     ]
   });
 
+  // Other's character, who isn't in the party.
+  const brann = new Actor({ id: "brann", name: "Brann", type: "character", owners: new Set(["other"]),
+    system: { details: { level: 3 }, attributes: { hp: { value: 20, max: 20 } }, currency: { gp: 5 } } });
+
+  // A dnd5e Group actor: the party, with Isen as its only member.
+  const party = new Actor({
+    id: "party", name: "The Company", type: "group",
+    system: { type: { value: "party" }, currency: { pp: 0, gp: 50, ep: 0, sp: 0, cp: 0 } },
+    items: [
+      { id: "rations", name: "Rations", type: "consumable", system: { quantity: 6, description: { value: "<p>One day of food.</p><section class=\"secret\"><p>Spoiled.</p></section>" } } },
+      { id: "lantern", name: "Lantern", type: "equipment", system: { quantity: 1, equipped: false, description: { value: "" } } },
+      { id: "partyfeat", name: "Party Feature", type: "feat", system: {} }
+    ]
+  });
+  party.system.members = [{ actor: isen }, { actor: "deleted-actor" }];
+
   const world = {
-    users, gm, ursula, other, isen,
-    actors: new Collection([[isen.id, isen]]),
+    users, gm, ursula, other, isen, brann, party,
+    actors: new Collection([isen, brann, party].map(a => [a.id, a])),
     messages: new Collection(),
     packs: [
       createPack("dnd5e.items", "Items (SRD)", [

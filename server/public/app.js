@@ -10,6 +10,7 @@
 const TOKEN_KEY = "player-companion.token";
 const ACTOR_KEY = "player-companion.actor";
 const TAB_KEY = "player-companion.tab";
+const GEAR_KEY = "player-companion.gear";
 
 const state = {
   token: null,
@@ -21,6 +22,7 @@ const state = {
   foundry: true,
   open: new Set(), // expanded item rows
   spellFilter: "all",
+  gearView: "character", // the Gear tab shows the character's inventory or the party's
   adder: null // the compendium search panel, see adderView()
 };
 
@@ -105,14 +107,14 @@ function description(item, loading = false) {
   if ("descriptionHtml" in item) return richDescription({ html: item.descriptionHtml, text: item.description });
   if (!item.hasDescription) return el("p", { class: "description muted" }, "No description.");
 
-  const key = `${state.actorId}:${item.id}:${item.updated ?? ""}`;
+  const key = `${descriptionKey(item)}${item.updated ?? ""}`;
   const cached = descriptions.get(key);
   // Remember failures: retrying on every render would loop while Foundry is offline.
   if (cached === "failed") return el("p", { class: "description muted" }, "Couldn't load the description. Close and reopen to try again.");
   if (cached && cached !== "loading") return richDescription(cached);
   if (!cached) {
     descriptions.set(key, "loading");
-    api("POST", `actors/${state.actorId}/itemDescription`, { itemId: item.id })
+    api("POST", `actors/${state.actorId}/${item.inParty ? "partyItemDescription" : "itemDescription"}`, { itemId: item.id })
       .then(data => descriptions.set(key, data))
       .catch(err => { descriptions.set(key, "failed"); handleError(err); })
       .finally(render);
@@ -293,8 +295,9 @@ function connectEvents() {
     else if (msg.type === "error" && msg.status === 503) setFoundry(false);
     // Our own changes come back as events too; the queue already has the answer.
     else if (pending) return;
-    else if (msg.type === "actorChanged" && msg.actorId === state.actorId) refresh();
-    else if (msg.type === "trackersChanged" || msg.type === "requestsChanged") refresh();
+    else if (msg.type === "actorChanged" && (msg.actorId === state.actorId || msg.actorId === state.actor?.party?.id
+      || msg.memberIds?.includes(state.actorId))) refresh();
+    else if (msg.type === "trackersChanged" || msg.type === "requestsChanged" || msg.type === "partyChanged") refresh();
   });
   socket.addEventListener("close", event => {
     if (events !== socket) return;
@@ -755,10 +758,15 @@ function traitsView(a) {
 /*  Items                                       */
 /* -------------------------------------------- */
 
-function toggleOpen(id) {
+/** Party items are another actor's, so their ids get their own keys. */
+const openKey = item => (item.inParty ? `party:${item.id}` : item.id);
+const descriptionKey = item => `${item.inParty ? "party" : state.actorId}:${item.id}:`;
+
+function toggleOpen(item) {
+  const id = openKey(item);
   state.open.has(id) ? state.open.delete(id) : state.open.add(id);
   for (const [key, value] of descriptions) {
-    if (value === "failed" && key.startsWith(`${state.actorId}:${id}:`)) descriptions.delete(key);
+    if (value === "failed" && key.startsWith(descriptionKey(item))) descriptions.delete(key);
   }
   render();
 }
@@ -766,18 +774,20 @@ function toggleOpen(id) {
 /**
  * A row: picture, name and a one-line summary, quick toggles on the right, and
  * a usage strip underneath that is always visible. Tapping the name opens the
- * details, activities, description and the remaining controls.
+ * details, activities, description and the remaining controls. A party
+ * item's uses and attunement belong to the party, so they aren't shown as controls.
  */
-function itemRow(item, { meta = [], quick = [], usage = [], controls = [], lead = null } = {}) {
-  const open = state.open.has(item.id);
+function itemRow(item, { meta = [], quick = [], usage = [], controls = [], actions = [], lead = null } = {}) {
+  const open = state.open.has(openKey(item));
   const summary = [item.summary, ...meta].filter(Boolean).join(" · ");
   const quickItems = [quick].flat().filter(Boolean);
-  const usageItems = [...usageStrip(item), ...usage].filter(Boolean);
-  const controlItems = [attunementControl(item), ...controls].filter(Boolean);
+  const usageItems = [...(item.inParty ? [] : usageStrip(item)), ...usage].filter(Boolean);
+  const controlItems = [item.inParty ? null : attunementControl(item), ...controls].filter(Boolean);
+  const actionItems = [...actions, item.inParty ? null : removeButton(item)].filter(Boolean);
   return el("li", { class: `item ${open ? "open" : ""}` },
     el("div", { class: "item-main" },
       lead,
-      el("button", { class: "item-name", onclick: () => toggleOpen(item.id), "aria-expanded": String(open) },
+      el("button", { class: "item-name", onclick: () => toggleOpen(item), "aria-expanded": String(open) },
         img(item.img),
         el("span", { class: "item-title" }, item.name, summary ? el("small", { class: "muted" }, summary) : null)),
       quickItems.length ? el("div", { class: "item-quick" }, quickItems) : null),
@@ -787,7 +797,7 @@ function itemRow(item, { meta = [], quick = [], usage = [], controls = [], lead 
       activitiesList(item),
       description(item),
       controlItems.length ? el("div", { class: "item-controls" }, controlItems) : null,
-      removeButton(item)) : null);
+      actionItems.length ? el("div", { class: "item-actions" }, actionItems) : null) : null);
 }
 
 function control(label, widget) {
@@ -849,17 +859,16 @@ function removeButton(item) {
   if (!item.removable || changesMode() === "off") return null;
   const approve = changesMode() === "approve";
   const waiting = state.actor.itemChanges.requests.some(r => r.kind === "remove" && r.itemId === item.id && r.status === "pending");
-  if (waiting) return el("p", { class: "muted item-actions" }, "Waiting for the GM to approve removing this.");
-  return el("div", { class: "item-actions" },
-    el("button", {
-      class: "ghost danger-text small",
-      onclick: async () => {
-        const ok = await confirmSheet(approve ? `Ask to remove ${item.name}?` : `Remove ${item.name}?`,
-          approve ? "The GM approves removals before they happen." : "It's deleted from the character in Foundry.",
-          { confirm: approve ? "Ask the GM" : "Remove", danger: true });
-        if (ok) act("removeItem", { itemId: item.id });
-      }
-    }, approve ? "Ask GM to remove" : "Remove"));
+  if (waiting) return el("span", { class: "muted" }, "Waiting for the GM to approve removing this.");
+  return el("button", {
+    class: "ghost danger-text small",
+    onclick: async () => {
+      const ok = await confirmSheet(approve ? `Ask to remove ${item.name}?` : `Remove ${item.name}?`,
+        approve ? "The GM approves removals before they happen." : "It's deleted from the character in Foundry.",
+        { confirm: approve ? "Ask the GM" : "Remove", danger: true });
+      if (ok) act("removeItem", { itemId: item.id });
+    }
+  }, approve ? "Ask GM to remove" : "Remove");
 }
 
 /** Pending and denied requests for one tab ("spell" or "item"). */
@@ -1087,25 +1096,36 @@ function spellsView(a) {
 /*  Inventory                                   */
 /* -------------------------------------------- */
 
-function currencyView(a) {
-  const coins = ["pp", "gp", "ep", "sp", "cp"];
-  return el("div", { class: "currency card" }, coins.map(coin =>
+const COINS = ["pp", "gp", "ep", "sp", "cp"];
+const coinSummary = c => COINS.filter(k => c[k]).map(k => `${c[k]} ${k}`).join(", ") || "no coins";
+
+function coinsView(currency, onSet, disabled = false) {
+  return el("div", { class: "currency card" }, COINS.map(coin =>
     el("label", { class: `coin ${coin}` },
       el("span", {}, coin.toUpperCase()),
       el("input", {
-        type: "number", inputmode: "numeric", min: 0, value: a.currency[coin],
+        type: "number", inputmode: "numeric", min: 0, value: currency[coin], disabled,
         onchange: e => {
           const n = Number(e.target.value);
-          if (Number.isInteger(n) && n >= 0) act("currency", { [coin]: n }, s => { s.currency[coin] = n; });
-          else e.target.value = a.currency[coin];
+          if (Number.isInteger(n) && n >= 0) onSet(coin, n);
+          else e.target.value = currency[coin];
         }
       }))));
+}
+
+function currencyView(a) {
+  return coinsView(a.currency, (coin, n) => act("currency", { [coin]: n }, s => { s.currency[coin] = n; }));
 }
 
 function inventoryRow(item) {
   // Consumables are used up by quantity, so their count sits in the always-visible strip.
   const countable = item.type === "consumable" && item.quantity !== undefined;
+  const party = state.actor.party;
   return itemRow(item, {
+    actions: [party?.canEdit ? partyButton(`Give to ${party.name}`, async () => {
+      const count = await howMany(`Give ${item.name} to ${party.name}`, item, "Give");
+      if (count) act("giveToParty", { itemId: item.id, quantity: count });
+    }) : null],
     quick: [
       !countable && item.quantity !== undefined && item.quantity !== 1 ? el("span", { class: "qty" }, `×${item.quantity}`) : null,
       item.equipped !== undefined ? el("button", {
@@ -1119,10 +1139,31 @@ function inventoryRow(item) {
   });
 }
 
+const GEAR_GROUPS = [["weapons", "Weapons"], ["equipment", "Equipment"], ["consumables", "Consumables"], ["tools", "Tools"], ["loot", "Loot & containers"]];
+
+/** Character or party, shown when the character is in a party. */
+function gearSwitch(a) {
+  if (!a.party) return null;
+  const current = state.gearView === "party" ? "party" : "character";
+  return el("div", { class: "segmented gear-switch", role: "group", "aria-label": "Whose inventory" },
+    [["character", "Character"], ["party", "Party"]].map(([key, label]) =>
+      el("button", {
+        class: current === key ? "active" : "", "aria-pressed": String(current === key),
+        onclick: () => {
+          state.gearView = key;
+          state.adder = null;
+          storage.set(GEAR_KEY, key);
+          render();
+        }
+      }, label)));
+}
+
 function inventoryView(a) {
-  const groups = [["weapons", "Weapons"], ["equipment", "Equipment"], ["consumables", "Consumables"], ["tools", "Tools"], ["loot", "Loot & containers"]];
+  if (a.party && state.gearView === "party") return [gearSwitch(a), partyView(a)];
+  const groups = GEAR_GROUPS;
   const any = groups.some(([key]) => a.items[key].length);
   return [
+    gearSwitch(a),
     currencyView(a),
     state.adder?.kind === "item" ? adderView() : addButton("item"),
     requestsView(a, "item"),
@@ -1132,6 +1173,107 @@ function inventoryView(a) {
     any
       ? el("p", { class: "muted hint legend" }, icon("shield", "inline"), " toggles equipped. Tap an item for its details.")
       : el("p", { class: "muted empty" }, "No items yet.")
+  ];
+}
+
+/* -------------------------------------------- */
+/*  Party inventory                             */
+/*  The items and coin on the character's party */
+/*  (a Group actor in Foundry).                 */
+/* -------------------------------------------- */
+
+const partyButton = (label, onclick) => el("button", { class: "ghost small", onclick }, label);
+
+/** How many of a stack to move: resolves with a count, or null if cancelled. A single item needs no question. */
+async function howMany(title, item, confirm) {
+  const max = item.quantity ?? 1;
+  if (max <= 1) return 1;
+  let count = 1;
+  return openSheet(title, close => {
+    const row = el("div", { class: "control" });
+    const draw = () => row.replaceChildren(
+      el("span", { class: "muted" }, `How many, of ${max}?`),
+      el("span", { class: "counter" },
+        stepper(count, v => { count = v; draw(); }, { min: 1, max, label: "how many" }),
+        el("button", { class: "ghost small", disabled: count === max, onclick: () => { count = max; draw(); } }, "All")));
+    draw();
+    return el("div", { class: "sheet-body" }, row,
+      el("div", { class: "button-row" },
+        el("button", { onclick: () => close(null) }, "Cancel"),
+        el("button", { class: "primary", autofocus: true, onclick: () => close(count) }, confirm)));
+  });
+}
+
+function moveCoinsSheet(a) {
+  const { party } = a;
+  const amounts = {};
+  return openSheet("Move coins", close => {
+    const send = direction => {
+      const body = { direction };
+      for (const [coin, value] of Object.entries(amounts)) {
+        const n = Number(value);
+        if (Number.isInteger(n) && n > 0) body[coin] = n;
+      }
+      if (Object.keys(body).length === 1) return toast("Enter how many coins to move", "error");
+      close();
+      act("moveCurrency", body);
+    };
+    return el("div", { class: "sheet-body" },
+      el("p", { class: "muted" }, `You have ${coinSummary(a.currency)}. ${party.name} has ${coinSummary(party.currency)}.`),
+      el("div", { class: "currency" }, COINS.map(coin =>
+        el("label", { class: `coin ${coin}` },
+          el("span", {}, coin.toUpperCase()),
+          el("input", { type: "number", inputmode: "numeric", min: 0, placeholder: "0", oninput: e => { amounts[coin] = e.target.value; } })))),
+      el("div", { class: "button-row" },
+        el("button", { onclick: () => send("fromParty") }, "Take from party"),
+        el("button", { class: "primary", onclick: () => send("toParty") }, "Give to party")));
+  });
+}
+
+function partyRow(item, party) {
+  const countable = item.type === "consumable" && item.quantity !== undefined;
+  const count = () => (party.canEdit
+    ? stepper(item.quantity, v => act("partyQuantity", { itemId: item.id, value: v }, () => { item.quantity = v; }), { max: 99999, label: `${item.name} quantity` })
+    : el("span", { class: "qty" }, `×${item.quantity}`));
+  return itemRow(item, {
+    quick: [!countable && item.quantity !== undefined && item.quantity !== 1 ? el("span", { class: "qty" }, `×${item.quantity}`) : null],
+    usage: [countable ? usageLine("Quantity", null, count()) : null],
+    controls: [!countable && item.quantity !== undefined && party.canEdit ? control("Quantity", count()) : null],
+    actions: [party.canEdit ? partyButton("Take", async () => {
+      const n = await howMany(`Take ${item.name}`, item, "Take");
+      if (n) act("takeFromParty", { itemId: item.id, quantity: n });
+    }) : null]
+  });
+}
+
+function timeAgo(at) {
+  const minutes = Math.round((Date.now() - at) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 24 * 60) return `${Math.round(minutes / 60)} h ago`;
+  return new Date(at).toLocaleDateString();
+}
+
+function partyView(a) {
+  const { party } = a;
+  const any = GEAR_GROUPS.some(([key]) => party.items[key].length);
+  return [
+    el("p", { class: "muted hint" },
+      `${party.name}, shared by ${party.members.map(m => m.name).join(", ")}.`,
+      party.canEdit ? "" : " Only the GM can change it."),
+    coinsView(party.currency, (coin, n) => act("partyCurrency", { [coin]: n }, s => { s.party.currency[coin] = n; }), !party.canEdit),
+    party.canEdit ? el("button", { class: "add-button", onclick: () => moveCoinsSheet(a) }, "Move coins") : null,
+    GEAR_GROUPS.filter(([key]) => party.items[key].length).map(([key, title]) => el("section", { class: "group" },
+      el("h2", {}, title),
+      el("ul", { class: "items" }, party.items[key].map(item => partyRow(item, party))))),
+    any ? null : el("p", { class: "muted empty" },
+      party.canEdit ? "Nothing here yet. Open one of your items and give it to the party." : "Nothing here yet."),
+    party.log.length ? el("section", { class: "group" },
+      el("h2", {}, "Recent"),
+      el("ul", { class: "party-log card" }, party.log.map(entry =>
+        el("li", {},
+          el("span", {}, el("strong", {}, entry.actor), ` ${entry.text}`),
+          el("small", { class: "muted" }, timeAgo(entry.at)))))) : null
   ];
 }
 
@@ -1267,6 +1409,7 @@ function trackersView(a) {
 async function start() {
   const saved = storage.get(TAB_KEY);
   state.tab = TABS.some(t => t.key === saved) ? saved : "stats";
+  state.gearView = storage.get(GEAR_KEY) === "party" ? "party" : "character";
   // A sign-in link carries the token in the fragment, which is never sent to the server.
   const fragment = new URLSearchParams(window.location.hash.slice(1));
   const linked = fragment.get("token");

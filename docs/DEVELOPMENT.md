@@ -29,6 +29,7 @@ Changes made in Foundry reach phones the other way: the module listens to Foundr
 | `module/scripts/text.js` | Turns Foundry descriptions into safe HTML: enrichment, 5etools tags, sanitising, caching. |
 | `module/scripts/items.js` | Compendium search, adding and removing items, GM approval requests and their chat cards. |
 | `module/scripts/trackers.js` | Custom trackers: storage, permissions, the Foundry window and the canvas panel. |
+| `module/scripts/party.js` | The party inventory: finding a character's Group actor, moving items and coin, and the log. |
 | `module/scripts/serial.js` | Runs world-setting read-modify-writes one at a time. |
 | `module/scripts/sha256.js` | SHA-256, with a fallback for Foundry served over plain HTTP. |
 | `module/scripts/errors.js` | `RelayError`, an error with an HTTP status. |
@@ -50,6 +51,9 @@ Changes made in Foundry reach phones the other way: the module listens to Foundr
 | Party trackers and templates | World settings `worldTrackers` and `trackerTemplates` | Everyone |
 | Item requests | World setting `itemRequests` | Everyone |
 | Item change mode | World setting `itemChanges` | Everyone |
+| Party items and coin | The dnd5e Group actor itself | Everyone |
+| Party log | `flags.player-companion.partyLog` on the Group actor | Everyone |
+| Party inventory mode | World setting `partyInventory` | Everyone |
 
 World settings and document flags reach every player's browser, which is why "hidden" trackers are hidden in the UI but not secret, and why the relay secret is a client setting.
 
@@ -58,6 +62,7 @@ World settings and document flags reach every player's browser, which is why "hi
 - **The relay secret** lets a Foundry client act as the world. Only the GM's browser should have it. If it leaks, change `RELAY_SECRET` and reconnect.
 - **A player token** acts as its Foundry user. Tokens are 256 random bits, shown once, and stored only as hashes. Revoking one closes that user's event sockets.
 - **Every action** checks that the token's user owns the actor (`ownedActor`) and only writes fields it names explicitly. Ownership failures return 404, so actor ids can't be probed.
+- **The party** is a Group actor players don't own. Party actions start from the player's own character and then check that the character is a member (`partyOf`), so a token reaches only its own characters' party.
 - **Descriptions** are sanitised twice: in the module (`text.js`) and again in the web app, which rebuilds them from a short list of tags instead of inserting HTML. The web app's Content-Security-Policy blocks inline scripts as a third layer.
 - **Compendium access** follows Foundry's compendium ownership. Players only search and add from compendiums they can open.
 - **GM approval** happens in a GM's own browser through chat-card buttons that are removed for players.
@@ -65,6 +70,8 @@ World settings and document flags reach every player's browser, which is why "hi
 ## Concurrency and caching
 
 - The relay handles requests in parallel, and a world setting returns its old value until the server confirms a save. Every read-modify-write of `itemRequests`, `worldTrackers` and `trackerTemplates` goes through a `serial()` queue so changes can't overwrite each other.
+- Party changes (moving items and coin, quantities, the log) share one `serial()` queue too, so two players can't both take the last potion.
+- A Group actor's changes are sent to the owners of its members as well as its own, with `memberIds` in the event.
 - Item descriptions are enriched once and cached in the GM's browser, keyed by the item's and the character's modification times, so formulas like `1d8 + @mod` refresh when modifiers change.
 - Sheets don't include descriptions; the web app fetches one when a row is opened and caches it by the item's `updated` time.
 - Compendium indexes are cached per pack and cleared when an item in that pack changes.

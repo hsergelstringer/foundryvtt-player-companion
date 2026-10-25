@@ -17,6 +17,7 @@ Foundry modules run in the browser and can't accept connections, so the module i
 - **Items and features:** uses (including actions with their own uses), quantities, equipped, attunement, currency, and full details: damage, to hit, properties, mastery, weight, price.
 - **Descriptions** read as they do in Foundry: dice formulas filled in from the character, links and rules references as names, tables and lists kept.
 - **Rests**, hit dice, death saves, exhaustion and Heroic Inspiration.
+- **Party inventory:** see the party's shared items and coin, give items and coin to the party and take them out, with a log of who did what.
 - **Custom trackers** for anything the sheet doesn't cover.
 - **Add items and spells from compendiums**, and remove them, with the GM's approval if the GM wants it.
 
@@ -74,6 +75,7 @@ All in **Configure Settings → Player Companion**.
 | Setting | Scope | What it does |
 | --- | --- | --- |
 | Adding and removing items in the web app | World | **The GM approves each change** (default), **Players change items directly**, or **Off** |
+| Party inventory in the web app | World | **Members give and take items and coin** (default), **Members can only look**, or **Off** |
 | Players can create trackers | World | Lets players add and remove their own trackers |
 | Show party trackers on the canvas | Each person | A small panel listing the party trackers |
 | Party tracker panel position | Each person | Which corner the panel sits in |
@@ -86,6 +88,19 @@ The Gear and Spells tabs have **Add item** and **Add spell**. Players search by 
 - With **direct changes**, the change happens at once and the GMs get a note in chat.
 
 Players only see compendiums they can open in Foundry. To keep one out of the app, set its ownership for players to **None**. Only physical items and spells can be added or removed this way; classes, features and anything with level-up steps still go through Foundry.
+
+## Party inventory
+
+The party's shared stash is a dnd5e **Group** actor. To set one up, create an actor of type **Group**, drag the player characters onto it as members, and (optionally) make it the primary party in dnd5e's settings. Give it items and coin like any actor; players don't need to own it.
+
+In the web app, the Gear tab gets a **Character / Party** switch for every member:
+
+- The party's coin and items, by type. Tap an item for its details and description.
+- **Take** on a party item moves it, or some of a stack, to your character. **Give to the party** on one of your items does the reverse. **Move coins** moves coin either way.
+- Quantities and coin can be changed directly, for rations eaten or treasure found.
+- **Recent** lists the last changes made from the web app: who gave, took or changed what.
+
+Moved items arrive unequipped and unattuned. Consumables and loot stack onto a matching item; giving a container gives its contents too. A character in more than one group uses the primary party, or else the first group by name. Spells, features and anything else that isn't a physical item stay on the character.
 
 ## Trackers
 

@@ -369,7 +369,7 @@ button.pip::after { content: ""; position: absolute; inset: -8px; } /* a bigger 
 .description .ref.broken { text-decoration: line-through; color: var(--muted); }
 .item-controls { display: flex; flex-direction: column; gap: 8px; }
 .control { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
-.item-actions { display: flex; justify-content: flex-end; margin: 0; font-size: 0.9rem; }
+.item-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin: 0; font-size: 0.9rem; }
 
 .equip-toggle, .prep-toggle {
   width: 38px; height: 38px; min-height: 0; padding: 0; border-radius: 50%;
@@ -417,6 +417,16 @@ button.pip::after { content: ""; position: absolute; inset: -8px; } /* a bigger 
 .coin { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
 .coin input { text-align: center; padding: 6px 2px; font-size: 1rem; font-weight: 600; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .coin.gp span { color: var(--accent); }
+.coin input:disabled { opacity: 1; background: var(--surface-2); }
+
+/* Party inventory */
+
+.gear-switch { display: flex; }
+.gear-switch button { flex: 1; }
+.party-log { list-style: none; margin: 0; padding: 4px 14px; display: flex; flex-direction: column; }
+.party-log li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+.party-log li:last-child { border-bottom: 0; }
+.party-log small { flex: none; }
 
 /* Features */
 

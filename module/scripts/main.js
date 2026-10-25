@@ -13,6 +13,7 @@
  */
 import { ACTIONS, RelayError } from "./actions.js";
 import { registerItemSettings, setupItems } from "./items.js";
+import { membersOf, registerPartySettings } from "./party.js";
 import { sha256Hex } from "./sha256.js";
 import { registerTrackerSettings, setupTrackers, TrackerWindow } from "./trackers.js";
 
@@ -207,8 +208,12 @@ function notifyActor(actor) {
   clearTimeout(queued.get(actor.id));
   queued.set(actor.id, setTimeout(() => {
     queued.delete(actor.id);
-    const userIds = game.users.filter(u => actor.testUserPermission(u, "OWNER")).map(u => u.id);
-    Relay.send({ type: "event", userIds, payload: { type: "actorChanged", actorId: actor.id } });
+    // A party's inventory shows on each member's sheet, so its members' owners hear about it too.
+    const audience = actor.type === "group" ? [actor, ...membersOf(actor)] : [actor];
+    const userIds = game.users.filter(u => audience.some(a => a.testUserPermission(u, "OWNER"))).map(u => u.id);
+    const payload = { type: "actorChanged", actorId: actor.id };
+    if (actor.type === "group") payload.memberIds = audience.slice(1).map(a => a.id);
+    Relay.send({ type: "event", userIds, payload });
   }, NOTIFY_DELAY_MS));
 }
 
@@ -233,6 +238,12 @@ Hooks.on(`${MODULE_ID}.trackersChanged`, () => {
 Hooks.on(`${MODULE_ID}.requestsChanged`, () => {
   if (Relay.status !== "connected") return;
   Relay.send({ type: "event", userIds: game.users.map(u => u.id), payload: { type: "requestsChanged" } });
+});
+
+// Turning the party inventory on or off changes every sheet.
+Hooks.on(`${MODULE_ID}.partyChanged`, () => {
+  if (Relay.status !== "connected") return;
+  Relay.send({ type: "event", userIds: game.users.map(u => u.id), payload: { type: "partyChanged" } });
 });
 
 setupTrackers();
@@ -357,6 +368,7 @@ Hooks.once("init", () => {
 
   registerTrackerSettings();
   registerItemSettings();
+  registerPartySettings();
 
   game.settings.registerMenu(MODULE_ID, "menu", {
     name: "Player Companion",

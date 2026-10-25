@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+**Added**
+- Party inventory. A character's party is the dnd5e Group actor it belongs to. The Gear tab has a Character / Party switch showing the party's items and coin; members give items and coin to the party, take them out, and change quantities, and every change is logged with who made it. A new world setting, *Party inventory in the web app*, chooses between members changing it, view only, or off.
+
+**API**
+- New actions `giveToParty`, `takeFromParty`, `moveCurrency`, `partyQuantity`, `partyCurrency` and `partyItemDescription`. Sheets have a `party` field. Changes to a party send `actorChanged` with the party's id and `memberIds` to its members; the setting sends `partyChanged`.
+
 ## 0.0.7
 
 **Fixed**

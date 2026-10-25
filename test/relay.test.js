@@ -101,7 +101,7 @@ describe("relay and tokens", () => {
 
   test("me lists only the user's own characters", async () => {
     assert.deepEqual((await call("GET", "me")).data.characters.map(c => c.id), ["isen"]);
-    assert.deepEqual((await call("GET", "me", null, tokens.other)).data.characters, []);
+    assert.deepEqual((await call("GET", "me", null, tokens.other)).data.characters.map(c => c.id), ["brann"]);
   });
 
   test("another player's character answers 404, for reads and changes", async () => {
@@ -362,6 +362,136 @@ describe("trackers", () => {
     await game.settings.set("player-companion", "allowPlayerTrackers", false);
     assert.equal((await act("createTracker", { name: "Nope" })).status, 403);
     await game.settings.set("player-companion", "allowPlayerTrackers", true);
+  });
+});
+
+describe("party inventory", () => {
+  const partyItem = (s, name) => Object.values(s.party.items).flat().find(i => i.name === name);
+  const own = (name) => [...world.isen.items.values()].filter(i => i.name === name);
+
+  test("the sheet shows the party's items, coin, members and log", async () => {
+    const { party } = await sheet();
+    assert.equal(party.name, "The Company");
+    assert.equal(party.canEdit, true);
+    assert.deepEqual(party.members.map(m => m.id), ["isen"]);
+    assert.equal(party.currency.gp, 50);
+    assert.deepEqual(party.items.consumables.map(i => [i.name, i.quantity, i.inParty]), [["Rations", 6, true]]);
+    assert.ok(!partyItem({ party }, "Party Feature"), "features stay out of the stash");
+    assert.deepEqual(party.log, []);
+  });
+
+  test("a character outside the party has none, and can't reach it", async () => {
+    const brann = await call("GET", "actors/brann", null, tokens.other);
+    assert.equal(brann.data.party, null);
+    assert.equal((await call("POST", "actors/brann/takeFromParty", { itemId: "rations" }, tokens.other)).status, 404);
+    assert.equal((await call("POST", "actors/brann/partyItemDescription", { itemId: "rations" }, tokens.other)).status, 404);
+    // Nor through someone else's character.
+    assert.equal((await act("takeFromParty", { itemId: "rations" }, tokens.other)).status, 404);
+  });
+
+  test("party descriptions never include secrets", async () => {
+    const { data } = await act("partyItemDescription", { itemId: "rations" });
+    assert.match(data.text, /One day of food/);
+    assert.doesNotMatch(data.text, /Spoiled/);
+  });
+
+  test("giving part of a stack splits it, and the rest stacks onto it", async () => {
+    let { status, data } = await act("giveToParty", { itemId: "arrows", quantity: 5 });
+    assert.equal(status, 200);
+    assert.equal(data.notice, "Gave 5 × Arrows to The Company");
+    assert.equal(world.isen.items.get("arrows").system.quantity, 15);
+    const given = partyItem(data.actor, "Arrows");
+    assert.equal(given.quantity, 5);
+    assert.equal(given.equipped, false, "arrives unequipped");
+
+    ({ data } = await act("giveToParty", { itemId: "arrows" }));
+    assert.equal(own("Arrows").length, 0);
+    assert.equal(partyItem(data.actor, "Arrows").quantity, 20);
+    assert.deepEqual(data.actor.party.log.map(e => [e.actor, e.user, e.text]),
+      [["Isen Frostborn", "Ursula", "gave 15 × Arrows"], ["Isen Frostborn", "Ursula", "gave 5 × Arrows"]]);
+  });
+
+  test("taking moves items back, and can't take more than there are", async () => {
+    let { data } = await act("takeFromParty", { itemId: partyItem(await sheet(), "Rations").id, quantity: 2 });
+    assert.equal(data.notice, "Took 2 × Rations");
+    assert.equal(partyItem(data.actor, "Rations").quantity, 4);
+    assert.equal(own("Rations")[0].system.quantity, 2);
+
+    const lantern = partyItem(data.actor, "Lantern").id;
+    assert.equal((await act("takeFromParty", { itemId: lantern, quantity: 2 })).status, 400);
+    ({ data } = await act("takeFromParty", { itemId: lantern }));
+    assert.equal(partyItem(data.actor, "Lantern"), undefined);
+    assert.equal(own("Lantern").length, 1);
+  });
+
+  test("only physical items can be given", async () => {
+    assert.equal((await act("giveToParty", { itemId: "channel" })).status, 400);
+    assert.equal((await act("giveToParty", { itemId: "bolt" })).status, 400);
+    assert.equal((await act("giveToParty", { itemId: "nope" })).status, 404);
+    assert.equal((await act("giveToParty", { itemId: "rope", quantity: 0 })).status, 200, "quantity is clamped to at least 1");
+    assert.equal((await act("takeFromParty", { itemId: "partyfeat" })).status, 404);
+  });
+
+  test("two players taking the last one: only one gets it", async () => {
+    const rope = partyItem(await sheet(), "Rope").id;
+    const results = await Promise.all([act("takeFromParty", { itemId: rope }), act("takeFromParty", { itemId: rope })]);
+    assert.deepEqual(results.map(r => r.status).sort(), [200, 404]);
+    assert.equal(own("Rope").length, 1);
+  });
+
+  test("coin moves both ways, and can't overdraw", async () => {
+    let { status, data } = await act("moveCurrency", { direction: "toParty", gp: 20, sp: 4 });
+    assert.equal(status, 200);
+    assert.equal(data.notice, "Put 20 gp, 4 sp in The Company");
+    assert.equal(data.actor.party.currency.gp, 70);
+    assert.equal(data.actor.currency.gp, world.isen.system.currency.gp);
+
+    const gp = world.isen.system.currency.gp;
+    ({ data } = await act("moveCurrency", { direction: "fromParty", gp: 10 }));
+    assert.equal(data.actor.currency.gp, gp + 10);
+    assert.equal(data.actor.party.currency.gp, 60);
+
+    const over = await act("moveCurrency", { direction: "fromParty", pp: 1 });
+    assert.equal(over.status, 400);
+    assert.equal(over.data.error, "The party has only 0 pp");
+    assert.equal((await act("moveCurrency", { direction: "sideways", gp: 1 })).status, 400);
+    assert.equal((await act("moveCurrency", { direction: "toParty" })).status, 400);
+  });
+
+  test("members set quantities and coin, and it's logged", async () => {
+    const rations = partyItem(await sheet(), "Rations").id;
+    let { data } = await act("partyQuantity", { itemId: rations, value: 3 });
+    assert.equal(partyItem(data, "Rations").quantity, 3);
+    ({ data } = await act("partyCurrency", { gp: 200 }));
+    assert.equal(data.party.currency.gp, 200);
+    assert.deepEqual(data.party.log.slice(0, 2).map(e => e.text), ["changed the coin: gp 60 → 200", "changed Rations from 4 to 3"]);
+  });
+
+  test("view-only and off", async () => {
+    await game.settings.set("player-companion", "partyInventory", "view");
+    const viewing = await sheet();
+    assert.equal(viewing.party.canEdit, false);
+    assert.equal((await act("partyQuantity", { itemId: partyItem(viewing, "Rations").id, value: 1 })).status, 403);
+    assert.equal((await act("giveToParty", { itemId: "rope" })).status, 403);
+
+    await game.settings.set("player-companion", "partyInventory", "off");
+    assert.equal((await sheet()).party, null);
+    assert.equal((await act("moveCurrency", { direction: "toParty", gp: 1 })).status, 404);
+    await game.settings.set("player-companion", "partyInventory", "edit");
+  });
+
+  test("a change to the party in Foundry reaches its members' streams", async () => {
+    const socket = new WebSocket(`${base.replace("http", "ws")}/api/events`);
+    const messages = [];
+    socket.addEventListener("message", e => messages.push(JSON.parse(e.data)));
+    await new Promise(resolve => socket.addEventListener("open", resolve));
+    socket.send(JSON.stringify({ type: "auth", token: tokens.ursula }));
+    await waitFor(() => messages.some(m => m.type === "ready"), "ready");
+
+    await world.party.update({ "system.currency.cp": 7 });
+    await waitFor(() => messages.some(m => m.type === "actorChanged" && m.actorId === "party"), "actorChanged");
+    assert.deepEqual(messages.find(m => m.actorId === "party").memberIds, ["isen"]);
+    socket.close();
   });
 });
 

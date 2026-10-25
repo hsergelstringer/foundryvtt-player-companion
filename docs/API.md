@@ -94,6 +94,21 @@ Each action is `POST /api/actors/:id/<action>`. Unless noted, it returns the upd
 
 `notice` is a sentence for the player, such as "Asked the GM to add Longsword to Isen".
 
+**Party inventory** (see the GM's *Party inventory in the web app* setting)
+
+These act on the party of the character in the path, the Group actor it's a member of. A character with no party, or with the setting off, answers `404`; with the setting on *Members can only look*, changes answer `403`. Each change is added to the party's `log`.
+
+| Action | Body | Notes |
+| --- | --- | --- |
+| `giveToParty` | `{ "itemId": "…", "quantity": 2 }` | One of the character's items. Leave out `quantity` to give all of it. Returns `{ actor, notice }`. |
+| `takeFromParty` | `{ "itemId": "…", "quantity": 1 }` | A party item's id. Leave out `quantity` to take all of it. Returns `{ actor, notice }`. |
+| `moveCurrency` | `{ "direction": "toParty", "gp": 20 }` | `direction` is `toParty` or `fromParty`; any of `pp`, `gp`, `ep`, `sp`, `cp`. Fails with `400` if there aren't enough. Returns `{ actor, notice }`. |
+| `partyQuantity` | `{ "itemId": "…", "value": 4 }` | A party item's quantity |
+| `partyCurrency` | Any of `{ "pp", "gp", "ep", "sp", "cp" }` | Sets the party's coin, e.g. for treasure found |
+| `partyItemDescription` | `{ "itemId": "…" }` | Like `itemDescription`, for a party item. Secret blocks are never included. |
+
+Moved items arrive unequipped and unattuned. Consumables and loot stack onto a matching item (same name and compendium source); moving all of a container brings its contents.
+
 **Trackers**
 
 | Action | Body | Notes |
@@ -126,6 +141,7 @@ Each action is `POST /api/actors/:id/<action>`. Unless noted, it returns the upd
 | `items` | `{ weapons, equipment, consumables, tools, loot, features, spells }`; see [items](#items) |
 | `itemChanges` | `{ mode, requests }`; `mode` is `approve`, `direct` or `off`, and `requests` are this character's waiting and denied requests |
 | `trackers` | `{ character, party, canCreate }`, each tracker with its value and whether this user can change (`canEdit`) or delete it (`canDelete`) |
+| `party` | The character's party, or `null`: `{ id, name, img, canEdit, members, currency, items, log }`. `members` are `{ id, name, img }`; `items` are `{ weapons, equipment, consumables, tools, loot }` of [items](#items) with `inParty: true`; `log` is the 20 latest changes, newest first, as `{ id, at, user, actor, text }` (`text` like `"gave 5 × Arrows"`). |
 
 ### Items
 
@@ -175,6 +191,8 @@ You'll receive:
 | --- | --- |
 | `{ "type": "ready", "user": … }` | The token was accepted |
 | `{ "type": "actorChanged", "actorId": "…" }` | One of your characters, or anything on it, changed |
+| `{ "type": "actorChanged", "actorId": "…", "memberIds": […] }` | A party one of your characters belongs to changed; `memberIds` are its characters |
+| `{ "type": "partyChanged" }` | The party inventory setting changed |
 | `{ "type": "trackersChanged" }` | Party trackers or tracker templates changed |
 | `{ "type": "requestsChanged" }` | Item requests or the item setting changed |
 | `{ "type": "foundry", "connected": false }` | The GM's browser disconnected (and `true` when it's back) |
