@@ -147,6 +147,22 @@ describe("the sheet", () => {
     assert.ok(!("descriptionHtml" in hammer));
   });
 
+  test("traits: senses, damage defenses, conditions, languages and proficiencies", async () => {
+    const { traits } = await sheet();
+    assert.deepEqual(traits, {
+      size: "Medium",
+      senses: ["Darkvision 60 ft", "Sees invisible within 5 ft"],
+      resistances: ["Fire", "Bludgeoning (except Magical or Silvered)"],
+      immunities: ["Poison"],
+      vulnerabilities: [],
+      damageModifications: ["Slashing −3"],
+      conditionImmunities: ["Frightened", "Charmed by fey"],
+      languages: ["Common", "Dwarvish"],
+      communication: ["Telepathy 30 ft"],
+      proficiencies: { armor: ["Light Armor", "Shields"], weapons: ["Simple Weapons"], tools: ["Thieves' Tools"] }
+    });
+  });
+
   test("uses, activity uses and attunement are reported", async () => {
     const s = await sheet();
     const channel = s.items.features[0];

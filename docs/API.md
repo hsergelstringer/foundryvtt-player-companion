@@ -118,6 +118,7 @@ Each action is `POST /api/actors/:id/<action>`. Unless noted, it returns the upd
 | `death` | `{ success, failure }` |
 | `inspiration`, `exhaustion`, `exhaustionMax` | |
 | `conditions` | Status ids, e.g. `["poisoned"]` |
+| `traits` | Labels, each an array of strings: `senses` (e.g. `"Darkvision 60 ft"`), `resistances`, `immunities`, `vulnerabilities` (physical types note bypasses, e.g. `"Bludgeoning (except Magical)"`), `damageModifications` (e.g. `"Slashing −3"`), `conditionImmunities`, `languages`, `communication` (e.g. telepathy), and `proficiencies: { armor, weapons, tools }`; plus `size` as a string. Effects that grant a sense or resistance are included. |
 | `currency` | `{ pp, gp, ep, sp, cp }` |
 | `abilities` | `[{ key, label, abbreviation, value, mod, save, proficient }]` |
 | `skills` | `[{ key, label, ability, total, passive, proficiency }]`; `proficiency` is 0, 0.5, 1 or 2 (expertise) |

@@ -241,6 +241,9 @@ async function enrichHTML(html, { secrets } = {}) {
  * a GM, two players, Ursula's character Isen (Cleric 5 / Wizard 2), compendiums and trackers.
  */
 export function installFoundry({ relayUrl = "", relaySecret = "" } = {}) {
+  // dnd5e's trait label helper, for the keys the fixtures use.
+  const traitLabels = { lgt: "Light Armor", sim: "Simple Weapons", thief: "Thieves' Tools" };
+  globalThis.dnd5e = { documents: { Trait: { keyLabel: key => traitLabels[key] ?? key } } };
   const { document, DOMParser } = parseHTML("<!doctype html><html><body><div id=\"interface\"></div></body></html>");
   Object.assign(globalThis, {
     document, DOMParser, Hooks, Actor, Item, User,
@@ -280,7 +283,12 @@ export function installFoundry({ relayUrl = "", relaySecret = "" } = {}) {
       skills: { prc: { label: "Perception", ability: "wis" }, ste: { label: "Stealth", ability: "dex" } },
       spellSchools: { evo: { label: "Evocation" } },
       movementTypes: { walk: { label: "Speed" }, burrow: { label: "Burrow" }, climb: { label: "Climb" }, fly: { label: "Fly" }, jump: { label: "Jump" }, swim: { label: "Swim" } },
-      conditionTypes: { exhaustion: { levels: 6 } },
+      conditionTypes: { exhaustion: { levels: 6 }, poisoned: { label: "Poisoned" }, frightened: { label: "Frightened" } },
+      senses: { blindsight: { label: "Blindsight" }, darkvision: { label: "Darkvision" }, tremorsense: { label: "Tremorsense" }, truesight: { label: "Truesight" } },
+      damageTypes: { bludgeoning: { label: "Bludgeoning", isPhysical: true }, fire: { label: "Fire" }, poison: { label: "Poison" }, slashing: { label: "Slashing", isPhysical: true } },
+      itemProperties: { mgc: { label: "Magical" }, sil: { label: "Silvered" } },
+      actorSizes: { med: { label: "Medium" } },
+      movementUnits: { ft: { abbreviation: "ft" } },
       currencies: { gp: { abbreviation: "gp" } },
       itemRarity: { common: "Common", rare: "Rare" },
       weaponMasteries: { push: { label: "Push" } },
@@ -303,8 +311,21 @@ export function installFoundry({ relayUrl = "", relaySecret = "" } = {}) {
       attributes: {
         hp: { value: 30, max: 44, temp: 5, tempmax: 0 }, ac: { value: 16 }, init: { total: 3 }, prof: 3,
         movement: { speeds: { walk: 30, fly: 0, swim: 30, jump: 7 }, units: "ft", hover: false, special: "" },
-        spellcasting: "wis", spell: { dc: 14, attack: 6 }, death: { success: 0, failure: 0 }, inspiration: false, exhaustion: 0
+        spellcasting: "wis", spell: { dc: 14, attack: 6 }, death: { success: 0, failure: 0 }, inspiration: false, exhaustion: 0,
+        senses: { ranges: { darkvision: 60, blindsight: null }, units: "ft", special: "Sees invisible within 5 ft" }
       },
+      traits: {
+        size: "med",
+        dr: { value: new Set(["fire", "bludgeoning"]), bypasses: new Set(["mgc", "sil"]), custom: "" },
+        di: { value: new Set(["poison"]), bypasses: new Set(), custom: "" },
+        dv: { value: new Set(), bypasses: new Set(), custom: "" },
+        dm: { amount: { slashing: "-3", fire: "" } },
+        ci: { value: new Set(["frightened"]), custom: "Charmed by fey" },
+        languages: { value: new Set(["common"]), custom: "", labels: { languages: ["Common", "Dwarvish"], ranged: ["Telepathy 30 ft"] } },
+        armorProf: { value: new Set(["lgt"]), custom: "Shields" },
+        weaponProf: { value: new Set(["sim"]), custom: "" }
+      },
+      tools: { thief: { value: 1 }, herb: { value: 0 } },
       abilities: { str: { value: 14, mod: 2, save: { value: 5 }, proficient: 1 }, dex: { value: 16, mod: 3, save: { value: 3 } }, con: { value: 14, mod: 2, save: { value: 2 } },
         int: { value: 12, mod: 1, save: { value: 1 } }, wis: { value: 16, mod: 3, save: { value: 6 }, proficient: 1 }, cha: { value: 8, mod: -1, save: { value: -1 } } },
       skills: { prc: { total: 6, passive: 16, value: 1, ability: "wis" }, ste: { total: 9, passive: 19, value: 2, ability: "dex" } },

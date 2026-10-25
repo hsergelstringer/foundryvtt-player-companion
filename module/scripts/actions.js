@@ -10,6 +10,7 @@ import { RelayError } from "./errors.js";
 import * as Items from "./items.js";
 import { activityUses, itemFacts } from "./details.js";
 import { describe } from "./text.js";
+import { characterTraits } from "./traits.js";
 import * as Trackers from "./trackers.js";
 
 export { RelayError };
@@ -284,6 +285,7 @@ export function serializeActor(actor, user) {
     exhaustion: num(attr.exhaustion),
     exhaustionMax: num(CONFIG.DND5E.conditionTypes?.exhaustion?.levels) || 6,
     conditions: [...(actor.statuses ?? [])],
+    traits: characterTraits(actor),
     currency: Object.fromEntries(["pp", "gp", "ep", "sp", "cp"].map(k => [k, num(sys.currency?.[k])])),
     abilities,
     skills,

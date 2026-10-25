@@ -228,6 +228,14 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
 .pill.on .icon svg { fill: currentColor; }
 .pill.warn { border-color: var(--warn); color: var(--warn); font-weight: 600; }
 
+.defenses { margin: -2px 0 0; font-size: 0.85rem; line-height: 1.35; }
+
+.traits { margin: 0; padding: 4px 14px; display: flex; flex-direction: column; }
+.traits div { display: grid; grid-template-columns: 8.5rem 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.traits div:last-child { border-bottom: 0; }
+.traits dt { font-size: 0.85rem; color: var(--muted); }
+.traits dd { margin: 0; font-size: 0.92rem; overflow-wrap: anywhere; }
+
 .death { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
 .death-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 

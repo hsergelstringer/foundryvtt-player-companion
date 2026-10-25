@@ -11,6 +11,7 @@ Foundry modules run in the browser and can't accept connections, so the module i
 ## What players can do
 
 - **See the whole character** as Foundry calculates it, so armor, conditions, encumbrance and effects are already counted: hit points, AC, initiative, every speed, proficiency, each spellcasting class's save DC and attack bonus, abilities, saves, skills and conditions.
+- **Traits:** senses, damage resistances, immunities and vulnerabilities, condition immunities, languages, and armor, weapon and tool proficiencies. Senses and defenses also show under hit points, where they matter mid-fight.
 - **Hit points:** take damage (temporary HP is used first), heal, set HP or temp HP. A bar pinned to the top keeps HP one tap away while scrolling.
 - **Spells:** slots as pips in each level's header, prepare and unprepare, and see casting time, range, components, duration, damage and description.
 - **Items and features:** uses (including actions with their own uses), quantities, equipped, attunement, currency, and full details: damage, to hit, properties, mastery, weight, price.

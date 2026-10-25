@@ -11,6 +11,9 @@
 - `deathSaves` with nothing to change is an error instead of an empty update; malformed URLs get 400 instead of 500.
 - If a description couldn't be loaded (e.g. while Foundry was offline), the web app retried in a loop; it now says so and tries again when the row is reopened.
 
+**Added**
+- Character traits: senses, damage resistances, immunities and vulnerabilities (with "except Magical" bypasses), damage modifications, condition immunities, languages and telepathy, and armor, weapon and tool proficiencies. A Traits card on the Stats tab, and a one-line summary of senses and defenses under hit points. Sheets have a new `traits` field.
+
 **Changed**
 - Descriptions load when a row is first opened, and stay cached until the item changes. Sheets are much smaller.
 - The relay gzips responses, about 70% smaller.

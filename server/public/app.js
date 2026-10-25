@@ -589,7 +589,21 @@ function vitalsView(a) {
       }, icon("star"), "Inspiration"),
       el("button", { class: `pill ${a.exhaustion ? "warn" : ""}`, onclick: () => exhaustionSheet(a) }, `Exhaustion ${a.exhaustion}`),
       a.conditions.map(c => el("span", { class: "chip condition" }, c))),
+    defensesLine(a),
     a.hp.value === 0 ? deathSavesView(a) : null);
+}
+
+/** Senses, damage defenses and condition immunities: what matters while taking hits at the table. */
+function defensesLine(a) {
+  const t = a.traits;
+  if (!t) return null;
+  const parts = [
+    t.senses.length ? t.senses.join(", ") : null,
+    t.resistances.length ? `Resists ${t.resistances.join(", ")}` : null,
+    t.immunities.length || t.conditionImmunities.length ? `Immune to ${[...t.immunities, ...t.conditionImmunities].join(", ")}` : null,
+    t.vulnerabilities.length ? `Vulnerable to ${t.vulnerabilities.join(", ")}` : null
+  ].filter(Boolean);
+  return parts.length ? el("p", { class: "defenses muted" }, parts.join(" · ")) : null;
 }
 
 /**
@@ -698,6 +712,7 @@ function statsView(a) {
         el("span", { class: "score" }, String(ab.value)),
         el("span", { class: `save ${ab.proficient ? "prof" : ""}`, title: ab.proficient ? "Proficient" : null },
           "Save ", el("strong", {}, signed(ab.save)))))),
+    traitsView(a),
     el("section", { class: "group" },
       el("h2", {}, "Skills"),
       el("ul", { class: "skills card" }, a.skills.map(s =>
@@ -711,6 +726,29 @@ function statsView(a) {
       el("span", { class: "prof-dot expert" }), " expertise  ",
       el("span", { class: "prof-dot half" }), " half · small number is passive")
   ];
+}
+
+function traitsView(a) {
+  const t = a.traits;
+  if (!t) return null;
+  const rows = [
+    ["Senses", t.senses],
+    ["Resistances", t.resistances],
+    ["Immunities", t.immunities],
+    ["Vulnerabilities", t.vulnerabilities],
+    ["Damage changes", t.damageModifications],
+    ["Condition immunities", t.conditionImmunities],
+    ["Languages", [...t.languages, ...t.communication]],
+    ["Armor", t.proficiencies.armor],
+    ["Weapons", t.proficiencies.weapons],
+    ["Tools", t.proficiencies.tools],
+    ["Size", t.size ? [t.size] : []]
+  ].filter(([, list]) => list.length);
+  if (!rows.length) return null;
+  return el("section", { class: "group" },
+    el("h2", {}, "Traits"),
+    el("dl", { class: "traits card" }, rows.map(([label, list]) =>
+      el("div", {}, el("dt", {}, label), el("dd", {}, list.join(", "))))));
 }
 
 /* -------------------------------------------- */
