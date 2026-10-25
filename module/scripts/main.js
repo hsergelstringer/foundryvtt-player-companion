@@ -60,6 +60,26 @@ const Tokens = {
 /*  Relay connection (GM browser only)          */
 /* -------------------------------------------- */
 
+/**
+ * The relay's Foundry socket address from what the GM typed: accepts a bare
+ * host ("relay.example.net"), http(s) or ws(s). Returns null if unusable.
+ */
+function relaySocketUrl(input) {
+  let text = String(input ?? "").trim();
+  if (!text) return null;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) text = `https://${text}`;
+  let url;
+  try { url = new URL(text); }
+  catch { return null; }
+  const protocol = { "http:": "ws:", "https:": "wss:", "ws:": "ws:", "wss:": "wss:" }[url.protocol];
+  if (!protocol || !url.hostname) return null;
+  url.protocol = protocol;
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/foundry`;
+  url.search = "";
+  url.hash = "";
+  return url.href;
+}
+
 const Relay = {
   socket: null,
   status: "disconnected",
@@ -83,18 +103,17 @@ const Relay = {
     this.disconnect();
     this.wanted = true;
 
-    let url;
-    try {
-      url = new URL(game.settings.get(MODULE_ID, "relayUrl"));
-      url.protocol = url.protocol.replace(/^http/, "ws");
-      url.pathname = `${url.pathname.replace(/\/+$/, "")}/foundry`;
-    }
-    catch {
-      return this.setStatus("error", "The relay URL is not a valid URL");
-    }
+    const url = relaySocketUrl(game.settings.get(MODULE_ID, "relayUrl"));
+    if (!url) return this.setStatus("error", "The relay URL should look like https://player-companion.example.net");
 
     this.setStatus("connecting");
-    const socket = new WebSocket(url);
+    let socket;
+    try {
+      socket = new WebSocket(url);
+    }
+    catch (err) {
+      return this.setStatus("error", `Could not open ${url}: ${err.message}`);
+    }
     this.socket = socket;
 
     socket.addEventListener("open", () => {
