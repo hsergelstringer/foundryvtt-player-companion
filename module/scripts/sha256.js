@@ -67,5 +67,3 @@ function sha256(message) {
   h.forEach((value, i) => outView.setUint32(i * 4, value));
   return out;
 }
-
-export const _sha256ForTests = sha256;

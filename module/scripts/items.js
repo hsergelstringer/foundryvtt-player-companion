@@ -16,10 +16,13 @@
  */
 
 import { RelayError } from "./errors.js";
+import { serial } from "./serial.js";
 
 const MODULE_ID = "player-companion";
 const MAX_RESULTS = 50;
 const MAX_PENDING = 20;
+/** Denied requests the player never dismissed are dropped after this long. */
+const DENIED_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Item types players can add and remove. Anything with advancement (classes, feats) stays in Foundry. */
 export const ITEM_TYPES = new Set(["weapon", "equipment", "consumable", "tool", "loot", "container", "backpack"]);
@@ -34,7 +37,12 @@ const esc = text => Handlebars.escapeExpression(String(text ?? ""));
 
 export const itemChangeMode = () => game.settings.get(MODULE_ID, "itemChanges");
 const requests = () => game.settings.get(MODULE_ID, "itemRequests") ?? [];
-const saveRequests = list => game.settings.set(MODULE_ID, "itemRequests", list);
+const saveRequests = list => {
+  const cutoff = Date.now() - DENIED_TTL_MS;
+  return game.settings.set(MODULE_ID, "itemRequests", list.filter(r => r.status !== "denied" || (r.resolved ?? r.created) > cutoff));
+};
+/** Every change to the request list goes through here, one at a time (see serial.js). */
+const withRequests = serial();
 
 /* -------------------------------------------- */
 /*  Search                                      */
@@ -203,7 +211,8 @@ function describeRequest(request) {
 }
 
 function cardHeader(request) {
-  const link = request.uuid ? `@UUID[${request.uuid}]{${esc(request.name)}}` : `<strong>${esc(request.name)}</strong>`;
+  // A "}" in the name would end the link label early.
+  const link = request.uuid ? `@UUID[${request.uuid}]{${esc(request.name).replace(/[{}]/g, "")}}` : `<strong>${esc(request.name)}</strong>`;
   const what = request.quantity > 1 ? `${link} (×${request.quantity})` : link;
   const action = request.kind === "add" ? `add ${what} to` : `remove ${what} from`;
   return `<p><strong>${esc(request.userName)}</strong> asks to ${action} <strong>${esc(request.actorName)}</strong>.</p>`;
@@ -280,21 +289,27 @@ export async function requestChange(user, actor, change) {
     return result;
   }
 
-  const list = requests();
-  if (list.filter(r => r.actorId === actor.id && r.status === "pending").length >= MAX_PENDING) {
-    throw new RelayError(400, `${actor.name} already has ${MAX_PENDING} requests waiting for the GM`);
-  }
-  if (change.kind === "remove" && list.some(r => r.status === "pending" && r.itemId === subject.id)) {
-    throw new RelayError(400, `You've already asked to remove ${subject.name}`);
-  }
-  list.push(request);
-  await saveRequests(list);
+  await withRequests(async () => {
+    const list = requests();
+    if (list.filter(r => r.actorId === actor.id && r.status === "pending").length >= MAX_PENDING) {
+      throw new RelayError(400, `${actor.name} already has ${MAX_PENDING} requests waiting for the GM`);
+    }
+    if (change.kind === "remove" && list.some(r => r.status === "pending" && r.itemId === subject.id)) {
+      throw new RelayError(400, `You've already asked to remove ${subject.name}`);
+    }
+    list.push(request);
+    await saveRequests(list);
+  });
   await whisperGMs(actor, cardContent(request), { requestId: request.id });
   return `Asked the GM to ${describeRequest(request)}`;
 }
 
 /** Approve or deny a pending request. Runs in a GM's browser. */
-export async function resolveRequest(requestId, approve) {
+export function resolveRequest(requestId, approve) {
+  return withRequests(() => resolve(requestId, approve));
+}
+
+async function resolve(requestId, approve) {
   const list = requests();
   const request = list.find(r => r.id === requestId);
   if (!request || request.status !== "pending") {
@@ -336,9 +351,13 @@ export async function resolveRequest(requestId, approve) {
 
 /** The player withdraws a pending request or dismisses a denied one. */
 export async function cancelRequest(actor, requestId) {
-  const request = requests().find(r => r.id === requestId && r.actorId === actor.id);
-  if (!request) throw new RelayError(404, "Request not found");
-  await saveRequests(requests().filter(r => r.id !== requestId));
+  const request = await withRequests(async () => {
+    const list = requests();
+    const found = list.find(r => r.id === requestId && r.actorId === actor.id);
+    if (!found) throw new RelayError(404, "Request not found");
+    await saveRequests(list.filter(r => r.id !== requestId));
+    return found;
+  });
   if (request.status === "pending") await closeCards(request, `Withdrawn by ${request.userName}.`);
 }
 

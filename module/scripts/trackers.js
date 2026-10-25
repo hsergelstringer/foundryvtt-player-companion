@@ -15,6 +15,8 @@
  * so it is not a way to keep real secrets.
  */
 
+import { serial } from "./serial.js";
+
 export const MODULE_ID = "player-companion";
 const FLAG = "trackers";
 const SOCKET = `module.${MODULE_ID}`;
@@ -202,18 +204,24 @@ export async function setActorValue(actor, trackerId, value) {
   return clamped;
 }
 
+/** Party trackers and templates are world settings saved whole; changes to them run one at a time. */
+const worldWrites = serial();
+
 export async function setWorldValue(trackerId, value) {
-  const list = worldTrackers();
-  const tracker = list.find(t => t.id === trackerId);
-  if (!tracker) throw new Error("Tracker not found");
+  if (!worldTrackers().some(t => t.id === trackerId)) throw new Error("Tracker not found");
   if (!game.user.isGM) {
     // Players can't write world settings; the active GM does it for them.
     game.socket.emit(SOCKET, { type: "setWorldValue", userId: game.user.id, trackerId, value });
     return;
   }
-  tracker.value = clampValue(tracker, value);
-  await game.settings.set(MODULE_ID, "worldTrackers", list);
-  return tracker.value;
+  return worldWrites(async () => {
+    const list = worldTrackers();
+    const tracker = list.find(t => t.id === trackerId);
+    if (!tracker) throw new Error("Tracker not found");
+    tracker.value = clampValue(tracker, value);
+    await game.settings.set(MODULE_ID, "worldTrackers", list);
+    return tracker.value;
+  });
 }
 
 export async function savePersonal(actor, input) {
@@ -228,7 +236,11 @@ export async function deletePersonal(actor, trackerId) {
   await actor.unsetFlag(MODULE_ID, `${FLAG}.${trackerId}`);
 }
 
-export async function saveWorldTracker(input) {
+export function saveWorldTracker(input) {
+  return worldWrites(() => writeWorldTracker(input));
+}
+
+async function writeWorldTracker(input) {
   const def = normalizeDefinition(input, { scope: "world" });
   const list = worldTrackers();
   const index = list.findIndex(t => t.id === def.id);
@@ -239,11 +251,15 @@ export async function saveWorldTracker(input) {
   return def;
 }
 
-export async function deleteWorldTracker(trackerId) {
-  await game.settings.set(MODULE_ID, "worldTrackers", worldTrackers().filter(t => t.id !== trackerId));
+export function deleteWorldTracker(trackerId) {
+  return worldWrites(() => game.settings.set(MODULE_ID, "worldTrackers", worldTrackers().filter(t => t.id !== trackerId)));
 }
 
-export async function saveTemplate(input) {
+export function saveTemplate(input) {
+  return worldWrites(() => writeTemplate(input));
+}
+
+async function writeTemplate(input) {
   const def = normalizeDefinition(input, { scope: "actor" });
   def.appliesTo = Array.isArray(input.appliesTo) && input.appliesTo.length ? input.appliesTo : "all";
   const list = templates();
@@ -254,8 +270,8 @@ export async function saveTemplate(input) {
   return def;
 }
 
-export async function deleteTemplate(templateId) {
-  await game.settings.set(MODULE_ID, "trackerTemplates", templates().filter(t => t.id !== templateId));
+export function deleteTemplate(templateId) {
+  return worldWrites(() => game.settings.set(MODULE_ID, "trackerTemplates", templates().filter(t => t.id !== templateId)));
 }
 
 /* -------------------------------------------- */
