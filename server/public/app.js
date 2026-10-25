@@ -693,14 +693,16 @@ function toggleOpen(id) {
 }
 
 /**
- * A row: picture, name, a short summary and quick controls. Tapping the name
- * opens the description and the full controls.
+ * A row: picture, name and a one-line summary, quick toggles on the right, and
+ * a usage strip underneath that is always visible. Tapping the name opens the
+ * details, activities, description and the remaining controls.
  */
-function itemRow(item, { meta = [], quick = [], controls = [], lead = null } = {}) {
+function itemRow(item, { meta = [], quick = [], usage = [], controls = [], lead = null } = {}) {
   const open = state.open.has(item.id);
-  const summary = meta.filter(Boolean).join(" · ");
+  const summary = [item.summary, ...meta].filter(Boolean).join(" · ");
   const quickItems = [quick].flat().filter(Boolean);
-  const controlItems = controls.filter(Boolean);
+  const usageItems = [...usageStrip(item), ...usage].filter(Boolean);
+  const controlItems = [attunementControl(item), ...controls].filter(Boolean);
   return el("li", { class: `item ${open ? "open" : ""}` },
     el("div", { class: "item-main" },
       lead,
@@ -708,7 +710,10 @@ function itemRow(item, { meta = [], quick = [], controls = [], lead = null } = {
         img(item.img),
         el("span", { class: "item-title" }, item.name, summary ? el("small", { class: "muted" }, summary) : null)),
       quickItems.length ? el("div", { class: "item-quick" }, quickItems) : null),
+    usageItems.length ? el("div", { class: "item-usage" }, usageItems) : null,
     open ? el("div", { class: "item-detail" },
+      detailsList(item),
+      activitiesList(item),
       description(item),
       controlItems.length ? el("div", { class: "item-controls" }, controlItems) : null,
       removeButton(item)) : null);
@@ -718,13 +723,50 @@ function control(label, widget) {
   return el("div", { class: "control" }, el("span", { class: "muted" }, label), widget);
 }
 
-function usesControl(item) {
-  if (!item.uses) return null;
-  return control("Uses", counter(item.uses.value, item.uses.max,
-    v => act("itemUses", { itemId: item.id, value: v }, () => { item.uses.value = v; }), "uses"));
+/** One line of the usage strip: what is being counted, how it comes back, and the counter. */
+function usageLine(label, recovery, widget) {
+  return el("div", { class: "usage-line" },
+    el("span", { class: "usage-label" }, label, recovery ? el("small", { class: "muted" }, ` · ${recovery}`) : null),
+    widget);
 }
 
-const usesSummary = item => (item.uses ? `${item.uses.value}/${item.uses.max} uses` : null);
+/** Item uses and activity uses, as counters that work without opening the row. */
+function usageStrip(item) {
+  const lines = [];
+  if (item.uses) {
+    lines.push(usageLine("Uses", item.uses.recovery, counter(item.uses.value, item.uses.max,
+      v => act("itemUses", { itemId: item.id, value: v }, () => { item.uses.value = v; }), `${item.name} uses`)));
+  }
+  for (const activity of item.activityUses ?? []) {
+    lines.push(usageLine(activity.name === item.name ? "Uses" : activity.name, activity.recovery, counter(activity.value, activity.max,
+      v => act("activityUses", { itemId: item.id, activityId: activity.id, value: v }, () => { activity.value = v; }), `${activity.name} uses`)));
+  }
+  return lines;
+}
+
+function detailsList(item) {
+  if (!item.details?.length) return null;
+  return el("dl", { class: "details" }, item.details.map(d =>
+    el("div", {}, el("dt", {}, d.label), el("dd", {}, d.value))));
+}
+
+function activitiesList(item) {
+  if (!item.activities?.length) return null;
+  return el("ul", { class: "activities" }, item.activities.map(a =>
+    el("li", {}, el("strong", {}, a.name), a.summary ? el("span", { class: "muted" }, a.summary) : null)));
+}
+
+function attunementControl(item) {
+  if (!item.attunement) return null;
+  return control(item.attunement === "required" ? "Attuned (required)" : "Attuned", el("button", {
+    class: `switch ${item.attuned ? "on" : ""}`, role: "switch", "aria-checked": String(!!item.attuned), "aria-label": `Attuned to ${item.name}`,
+    onclick: () => act("itemAttuned", { itemId: item.id, value: !item.attuned }, () => { item.attuned = !item.attuned; })
+  }, el("span")));
+}
+
+function quantityStepper(item) {
+  return stepper(item.quantity, v => act("itemQuantity", { itemId: item.id, value: v }, () => { item.quantity = v; }), { max: 99999, label: `${item.name} quantity` });
+}
 
 /* -------------------------------------------- */
 /*  Adding and removing items                   */
@@ -911,13 +953,11 @@ function spellRow(spell) {
     : null;
   return itemRow(spell, {
     lead,
-    meta: [spell.school, usesSummary(spell)],
+    meta: spell.summary ? [] : [spell.school],
     quick: [
-      spell.concentration ? el("span", { class: "chip", title: "Concentration" }, "C") : null,
       spell.ritual ? el("span", { class: "chip", title: "Ritual" }, "R") : null,
       spell.level > 0 && MODE_LABELS[prep.mode] ? el("span", { class: "chip" }, MODE_LABELS[prep.mode]) : null
-    ],
-    controls: [usesControl(spell)]
+    ]
   });
 }
 
@@ -992,21 +1032,19 @@ function currencyView(a) {
 }
 
 function inventoryRow(item) {
+  // Consumables are used up by quantity, so their count sits in the always-visible strip.
+  const countable = item.type === "consumable" && item.quantity !== undefined;
   return itemRow(item, {
-    meta: [usesSummary(item)],
     quick: [
-      item.quantity !== undefined && item.quantity !== 1 ? el("span", { class: "qty" }, `×${item.quantity}`) : null,
+      !countable && item.quantity !== undefined && item.quantity !== 1 ? el("span", { class: "qty" }, `×${item.quantity}`) : null,
       item.equipped !== undefined ? el("button", {
         class: `equip-toggle ${item.equipped ? "on" : ""}`, "aria-pressed": String(item.equipped),
         "aria-label": item.equipped ? `Unequip ${item.name}` : `Equip ${item.name}`, title: item.equipped ? "Equipped" : "Not equipped",
         onclick: () => act("itemEquipped", { itemId: item.id, value: !item.equipped }, () => { item.equipped = !item.equipped; })
       }, icon("shield")) : null
     ],
-    controls: [
-      item.quantity !== undefined ? control("Quantity", stepper(item.quantity,
-        v => act("itemQuantity", { itemId: item.id, value: v }, () => { item.quantity = v; }), { max: 99999, label: "quantity" })) : null,
-      usesControl(item)
-    ]
+    usage: [countable ? usageLine("Quantity", null, quantityStepper(item)) : null],
+    controls: [!countable && item.quantity !== undefined ? control("Quantity", quantityStepper(item)) : null]
   });
 }
 
@@ -1021,7 +1059,7 @@ function inventoryView(a) {
       el("h2", {}, title),
       el("ul", { class: "items" }, a.items[key].map(inventoryRow)))),
     any
-      ? el("p", { class: "muted hint legend" }, icon("shield", "inline"), " toggles equipped. Tap an item for details and quantity.")
+      ? el("p", { class: "muted hint legend" }, icon("shield", "inline"), " toggles equipped. Tap an item for its details.")
       : el("p", { class: "muted empty" }, "No items yet.")
   ];
 }
@@ -1053,10 +1091,7 @@ function featuresView(a) {
     el("section", { class: "group" },
       el("h2", {}, "Features"),
       a.items.features.length
-        ? el("ul", { class: "items" }, a.items.features.map(item => itemRow(item, {
-          meta: [usesSummary(item)],
-          controls: [usesControl(item)]
-        })))
+        ? el("ul", { class: "items" }, a.items.features.map(item => itemRow(item)))
         : el("p", { class: "muted empty" }, "No features."))
   ];
 }

@@ -8,6 +8,7 @@
 
 import { RelayError } from "./errors.js";
 import * as Items from "./items.js";
+import { activityUses, itemFacts } from "./details.js";
 import { describe } from "./text.js";
 import * as Trackers from "./trackers.js";
 
@@ -109,11 +110,19 @@ async function serializeItem(item, user) {
     uses: null,
     removable: Items.isManaged(item)
   };
+  const facts = itemFacts(item);
+  data.summary = facts.summary;
+  data.details = facts.details;
+  data.activities = facts.activities;
   const uses = itemUses(item);
-  if (uses) data.uses = { value: uses.value, max: uses.max };
+  if (uses) data.uses = { value: uses.value, max: uses.max, recovery: facts.recovery };
+  data.activityUses = activityUses(item);
   if ("quantity" in sys) data.quantity = num(sys.quantity);
   if ("equipped" in sys) data.equipped = !!sys.equipped;
-  if ("attuned" in sys) data.attuned = !!sys.attuned;
+  if (facts.attunement) {
+    data.attunement = facts.attunement;
+    data.attuned = !!sys.attuned;
+  }
   if (item.type === "spell") {
     const prep = spellPreparation(item);
     data.level = num(sys.level);
@@ -392,6 +401,26 @@ export const ACTIONS = {
     const item = ownedItem(actor, itemId);
     if (!("equipped" in item.system)) throw new RelayError(400, "That item cannot be equipped");
     await item.update({ "system.equipped": requireBool(value, "value") });
+    return serializeActor(actor, user);
+  },
+
+  async itemAttuned(user, { actorId, itemId, value }) {
+    const actor = ownedActor(user, actorId);
+    const item = ownedItem(actor, itemId);
+    if (!["required", "optional"].includes(item.system.attunement)) throw new RelayError(400, "That item doesn't need attunement");
+    await item.update({ "system.attuned": requireBool(value, "value") });
+    return serializeActor(actor, user);
+  },
+
+  /** Body: { itemId, activityId, value } where value is the activity's uses remaining. */
+  async activityUses(user, { actorId, itemId, activityId, value }) {
+    const actor = ownedActor(user, actorId);
+    const item = ownedItem(actor, itemId);
+    const activity = item.system.activities?.get?.(String(activityId ?? ""));
+    const max = num(activity?.uses?.max);
+    if (!activity || !max) throw new RelayError(400, "That activity has no limited uses");
+    const remaining = requireInt(value, "value", { min: 0, max });
+    await activity.update({ "uses.spent": max - remaining });
     return serializeActor(actor, user);
   },
 

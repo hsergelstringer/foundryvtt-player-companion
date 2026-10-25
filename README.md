@@ -13,7 +13,8 @@ Foundry modules run in the browser and can't listen for HTTP requests, so the mo
 
 - See their character: HP, AC, initiative, every speed (walk, fly, swim, climb, burrow), proficiency, the spell save DC and attack bonus for each spellcasting class, abilities, saves, skills, conditions, spells, inventory and features (with descriptions). These are the values dnd5e works out in Foundry, so armor, conditions, encumbrance and active effects are already included.
 - Apply damage (temp HP is used first) or healing, set HP or temp HP
-- Track spell slots, item and feature uses, hit dice, death saves, exhaustion and Heroic Inspiration
+- See each item's and spell's details (casting time, range, components, damage, properties and so on) and track its uses, including activities with their own uses, without opening it
+- Track spell slots, hit dice, death saves, exhaustion and Heroic Inspiration, and attune to items
 - Prepare or unprepare spells, equip items, change quantities and currency
 - Take a short or long rest
 - See changes made in Foundry live
@@ -108,6 +109,8 @@ All requests except `/api/health` need `Authorization: Bearer <token>`. A token 
 | POST | `/api/actors/:id/itemUses` | `{ "itemId": "…", "value": 2 }` (uses remaining) |
 | POST | `/api/actors/:id/itemQuantity` | `{ "itemId": "…", "value": 3 }` |
 | POST | `/api/actors/:id/itemEquipped` | `{ "itemId": "…", "value": true }` |
+| POST | `/api/actors/:id/itemAttuned` | `{ "itemId": "…", "value": true }` (items that need attunement) |
+| POST | `/api/actors/:id/activityUses` | `{ "itemId": "…", "activityId": "…", "value": 1 }` (uses remaining on an activity with its own uses) |
 | POST | `/api/actors/:id/spellPrepared` | `{ "itemId": "…", "value": true }` |
 | POST | `/api/actors/:id/hitDice` | `{ "classId": "…", "value": 3 }` (dice remaining) |
 | POST | `/api/actors/:id/currency` | any of `{ "pp", "gp", "ep", "sp", "cp" }` |
@@ -125,6 +128,8 @@ All requests except `/api/health` need `Authorization: Bearer <token>`. A token 
 | POST | `/api/actors/:id/cancelItemRequest` | `{ "requestId": "…" }`; withdraws a waiting request or dismisses a denied one |
 
 Every POST returns the updated sheet, except: `addItem` and `removeItem` return `{ actor, notice }`, and the two search actions return search data.
+
+Items also have `summary` (a one-line overview, e.g. "Action · 120 ft · V, S"), `details` (label/value pairs such as casting time, range, components, duration, to hit, save, damage, properties, mastery, armor, weight and price, taken from dnd5e's own labels), `activities` (when there is more than one), `uses` with its `recovery`, `activityUses` for activities with their own uses, and `attunement`/`attuned` where it applies.
 
 Items have `description` (plain text) and `descriptionHtml`. Both come from Foundry's enricher, so inline rolls, `@UUID` links, dnd5e enrichers like `[[/save dex 15]]` and `&Reference[prone]`, roll data like `@mod`, and leftover 5etools tags like `{@damage 1d6}` read as they do in Foundry. `descriptionHtml` only uses simple formatting tags (paragraphs, lists, tables, bold, italic), plus `<span class="roll">` for dice and `<span class="ref">` for links to documents and rules. Secret blocks are included only for people who own the item.
 
