@@ -11,7 +11,7 @@ Foundry modules run in the browser and can't listen for HTTP requests, so the mo
 
 ## What players can do
 
-- See their character: HP, AC, initiative, speed, proficiency, spell DC, abilities, saves, skills, conditions, spells, inventory and features (with descriptions)
+- See their character: HP, AC, initiative, every speed (walk, fly, swim, climb, burrow), proficiency, the spell save DC and attack bonus for each spellcasting class, abilities, saves, skills, conditions, spells, inventory and features (with descriptions). These are the values dnd5e works out in Foundry, so armor, conditions, encumbrance and active effects are already included.
 - Apply damage (temp HP is used first) or healing, set HP or temp HP
 - Track spell slots, item and feature uses, hit dice, death saves, exhaustion and Heroic Inspiration
 - Prepare or unprepare spells, equip items, change quantities and currency
@@ -126,7 +126,7 @@ All requests except `/api/health` need `Authorization: Bearer <token>`. A token 
 
 Every POST returns the updated sheet, except: `addItem` and `removeItem` return `{ actor, notice }`, and the two search actions return search data.
 
-Sheets include `trackers: { character, party, canCreate }`, with each tracker's value and whether the user can change or delete it, and `itemChanges: { mode, requests }`, with the character's waiting and denied item requests.
+Sheets include `speed: { walk, units, all, hover, special }` (`all` lists every non-zero speed), `spellcasting: { ability, dc, attack, classes }` (`classes` has each spellcasting class's DC and attack bonus), `trackers: { character, party, canCreate }`, with each tracker's value and whether the user can change or delete it, and `itemChanges: { mode, requests }`, with the character's waiting and denied item requests.
 
 For live updates, open a WebSocket to `/api/events` and send `{"type":"auth","token":"…"}` first. You'll receive `{"type":"actorChanged","actorId":"…"}` whenever one of your characters changes, `{"type":"trackersChanged"}` when party trackers or templates change, `{"type":"requestsChanged"}` when item requests change, and `{"type":"foundry","connected":false}` when the GM's browser goes offline.
 
@@ -135,7 +135,7 @@ To add an action, add a function to `ACTIONS` in `module/scripts/actions.js`. It
 ## Limits
 
 - Needs a logged-in GM. If you want it always on, leave a GM browser open on a spare machine.
-- Built against dnd5e 4.x/5.x data shapes. It has been tested against a mocked dnd5e actor, not yet a live world.
+- Built against dnd5e 4.x–6.x data shapes. It has been tested against a mocked dnd5e actor, not yet a live world.
 - Short rests don't spend hit dice. Players lower the count after rolling at the table.
 
 ## Releasing

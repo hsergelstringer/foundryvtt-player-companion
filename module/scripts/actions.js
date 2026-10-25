@@ -3,7 +3,7 @@
  *
  * Every action runs in the GM's browser, so every action must check that the
  * requesting user owns the actor and must only touch whitelisted fields.
- * Written against dnd5e 4.x and 5.x; older data shapes are handled where cheap.
+ * Written against dnd5e 4.x to 6.x; older data shapes are handled where cheap.
  */
 
 import { RelayError } from "./errors.js";
@@ -165,6 +165,46 @@ function serializeSpellSlots(actor) {
   return slots;
 }
 
+/**
+ * Every speed the character has, after conditions, encumbrance and bonuses.
+ * dnd5e 6 keeps speeds in movement.speeds; earlier versions put them on movement itself.
+ */
+function serializeSpeed(actor) {
+  const movement = actor.system.attributes?.movement ?? {};
+  const speeds = movement.speeds ?? movement;
+  const types = CONFIG.DND5E.movementTypes ?? { walk: {}, burrow: {}, climb: {}, fly: {}, swim: {} };
+  const all = Object.entries(types)
+    .map(([key, config]) => ({
+      key,
+      label: key === "walk" ? "Walk" : localize(config.label ?? config) || key,
+      value: num(speeds[key])
+    }))
+    .filter(s => s.value > 0 && s.key !== "jump");
+  return {
+    walk: num(speeds.walk),
+    units: movement.units ?? "ft",
+    all,
+    hover: !!movement.hover,
+    special: movement.special || ""
+  };
+}
+
+/** Save DC and attack bonus for each spellcasting class, falling back to the actor's single values. */
+function serializeSpellcasting(actor) {
+  const attr = actor.system.attributes ?? {};
+  const abilityLabel = key => localize(CONFIG.DND5E.abilities[key]?.label) || key?.toUpperCase() || "";
+  const classes = Object.values(actor.spellcastingClasses ?? {}).map(cls => {
+    const sc = cls.spellcasting ?? cls.system.spellcasting ?? {};
+    return { id: cls.id, name: cls.name, ability: sc.ability ?? "", abilityLabel: abilityLabel(sc.ability), dc: num(sc.save), attack: num(sc.attack) };
+  }).filter(c => c.dc);
+  return {
+    ability: attr.spellcasting || null,
+    dc: num(attr.spell?.dc ?? attr.spelldc),
+    attack: num(attr.spell?.attack ?? 0),
+    classes
+  };
+}
+
 export function serializeActor(actor, user) {
   const sys = actor.system;
   const attr = sys.attributes ?? {};
@@ -216,12 +256,8 @@ export function serializeActor(actor, user) {
     ac: num(attr.ac?.value),
     initiative: num(attr.init?.total ?? attr.init?.mod),
     proficiency: num(attr.prof),
-    speed: { walk: num(attr.movement?.walk), units: attr.movement?.units ?? "ft" },
-    spellcasting: {
-      ability: attr.spellcasting || null,
-      dc: num(attr.spell?.dc ?? attr.spelldc),
-      attack: num(attr.spell?.attack ?? 0)
-    },
+    speed: serializeSpeed(actor),
+    spellcasting: serializeSpellcasting(actor),
     death: { success: num(attr.death?.success), failure: num(attr.death?.failure) },
     inspiration: !!attr.inspiration,
     exhaustion: num(attr.exhaustion),
