@@ -1,4 +1,4 @@
-# Sheet Relay
+# Player Companion
 
 Lets players manage their D&D 5e characters from outside Foundry, on a phone-friendly web app or any app that uses the REST API.
 
@@ -30,7 +30,7 @@ docker run -d -p 8080:8080 -e RELAY_SECRET="$(openssl rand -hex 24)" \
   ghcr.io/hsergelstringer/foundryvtt-player-companion:latest
 ```
 
-To build it yourself instead, run `docker build -t sheet-relay server/`. Or run it without Docker: `npm ci && RELAY_SECRET=... node server.js` (Node 20+).
+To build it yourself instead, run `docker build -t player-companion server/`. Or run it without Docker: `npm ci && RELAY_SECRET=... node server.js` (Node 20+).
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -48,11 +48,11 @@ In Foundry: **Add-on Modules → Install Module**, paste this manifest URL and c
 https://github.com/hsergelstringer/foundryvtt-player-companion/releases/latest/download/module.json
 ```
 
-Then enable **Sheet Relay** in the world. For development, symlink `module/` into the Foundry data directory as `Data/modules/sheet-relay` instead.
+Then enable **Player Companion** in the world. For development, symlink `module/` into the Foundry data directory as `Data/modules/player-companion` instead.
 
 ### 3. Connect (GM)
 
-In **Game Settings → Configure Settings → Sheet Relay → Open Sheet Relay**, enter the relay URL (e.g. `https://sheets.example.net`), the `RELAY_SECRET` and the player web app URL (usually the same address), then **Save and connect**. The URL and secret are client settings: they stay in that browser only, and players never receive them.
+In **Game Settings → Configure Settings → Player Companion → Open Player Companion**, enter the relay URL (e.g. `https://sheets.example.net`), the `RELAY_SECRET` and the player web app URL (usually the same address), then **Save and connect**. The URL and secret are client settings: they stay in that browser only, and players never receive them.
 
 ### 4. Give players access
 

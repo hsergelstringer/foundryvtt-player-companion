@@ -1,4 +1,4 @@
-<div class="sheet-relay-settings standard-form">
+<div class="player-companion-settings standard-form">
   {{#if isGM}}
   <fieldset>
     <legend>Relay connection (this browser only)</legend>
@@ -33,7 +33,7 @@
   <fieldset>
     <legend>Access tokens</legend>
     {{#each users}}
-    <div class="sheet-relay-user">
+    <div class="player-companion-user">
       <header>
         <strong>{{name}}</strong>{{#if isGM}} <em>(GM)</em>{{/if}}
         <button type="button" data-action="createToken" data-user-id="{{id}}"><i class="fa-solid fa-key"></i> New token</button>
@@ -56,11 +56,11 @@
 </div>
 
 <style>
-  .sheet-relay-settings .sheet-relay-user { margin-bottom: 0.5rem; }
-  .sheet-relay-settings .sheet-relay-user header { display: flex; align-items: center; gap: 0.5rem; }
-  .sheet-relay-settings .sheet-relay-user header button { margin-left: auto; flex: 0 0 auto; width: auto; }
-  .sheet-relay-settings ul { list-style: none; margin: 0.25rem 0 0; padding: 0; }
-  .sheet-relay-settings li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
-  .sheet-relay-settings li button { flex: 0 0 2rem; width: 2rem; }
-  .sheet-relay-settings .form-footer { display: flex; gap: 0.5rem; }
+  .player-companion-settings .player-companion-user { margin-bottom: 0.5rem; }
+  .player-companion-settings .player-companion-user header { display: flex; align-items: center; gap: 0.5rem; }
+  .player-companion-settings .player-companion-user header button { margin-left: auto; flex: 0 0 auto; width: auto; }
+  .player-companion-settings ul { list-style: none; margin: 0.25rem 0 0; padding: 0; }
+  .player-companion-settings li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+  .player-companion-settings li button { flex: 0 0 2rem; width: 2rem; }
+  .player-companion-settings .form-footer { display: flex; gap: 0.5rem; }
 </style>

@@ -1,7 +1,7 @@
 import { ACTIONS, RelayError } from "./actions.js";
 import { sha256Hex } from "./sha256.js";
 
-const MODULE_ID = "sheet-relay";
+const MODULE_ID = "player-companion";
 const TOKEN_FLAG = "tokens";
 const TEMPLATE = `modules/${MODULE_ID}/templates/settings.hbs`;
 const NOTIFY_DELAY_MS = 300;
@@ -27,7 +27,7 @@ const Tokens = {
 
   async create(user, label) {
     const bytes = crypto.getRandomValues(new Uint8Array(32));
-    const token = `sr_${btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+    const token = `pc_${btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
     const id = foundry.utils.randomID();
     await user.setFlag(MODULE_ID, TOKEN_FLAG, {
       [id]: { hash: await sha256Hex(token), label: label || "Web app", created: Date.now() }
@@ -40,7 +40,7 @@ const Tokens = {
   },
 
   async userFor(token) {
-    if (typeof token !== "string" || !token.startsWith("sr_") || token.length > 200) return null;
+    if (typeof token !== "string" || !token.startsWith("pc_") || token.length > 200) return null;
     if (!this._index) {
       this._index = new Map();
       for (const user of game.users) {
@@ -202,10 +202,10 @@ Hooks.on("updateUser", (user, changes) => {
 
 class RelaySettings extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS = {
-    id: "sheet-relay-settings",
-    classes: ["sheet-relay"],
+    id: "player-companion-settings",
+    classes: ["player-companion"],
     tag: "form",
-    window: { title: "Sheet Relay", icon: "fa-solid fa-mobile-screen", resizable: true },
+    window: { title: "Player Companion", icon: "fa-solid fa-mobile-screen", resizable: true },
     position: { width: 560, height: "auto" },
     form: { handler: RelaySettings.#onSubmit, submitOnChange: false, closeOnSubmit: false },
     actions: {
@@ -249,7 +249,7 @@ class RelaySettings extends HandlebarsApplicationMixin(ApplicationV2) {
     await game.settings.set(MODULE_ID, "relayUrl", String(data.relayUrl ?? "").trim());
     if (data.relaySecret) await game.settings.set(MODULE_ID, "relaySecret", String(data.relaySecret).trim());
     await game.settings.set(MODULE_ID, "appUrl", String(data.appUrl ?? "").trim());
-    ui.notifications.info("Sheet Relay settings saved.");
+    ui.notifications.info("Player Companion settings saved.");
     Relay.connect();
     this.render();
   }
@@ -307,8 +307,8 @@ Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "appUrl", { scope: "world", config: false, type: String, default: "" });
 
   game.settings.registerMenu(MODULE_ID, "menu", {
-    name: "Sheet Relay",
-    label: "Open Sheet Relay",
+    name: "Player Companion",
+    label: "Open Player Companion",
     hint: "GM: connect Foundry to the relay. Players: create a token to use your character from the web app.",
     icon: "fa-solid fa-mobile-screen",
     type: RelaySettings,

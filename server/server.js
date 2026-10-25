@@ -1,5 +1,5 @@
 /**
- * Sheet Relay server.
+ * Player Companion relay server.
  *
  * Foundry modules run in the browser and cannot listen for HTTP requests, so
  * the module (running in the GM's browser) connects out to this server over a
@@ -84,7 +84,7 @@ function attachWorld(ws, hello) {
 /** Send a request to Foundry and wait for its reply. */
 function forward(token, action, params = {}) {
   if (!world) {
-    return Promise.resolve({ ok: false, status: 503, error: "Foundry is not connected. The GM needs to be logged in with Sheet Relay enabled." });
+    return Promise.resolve({ ok: false, status: 503, error: "Foundry is not connected. The GM needs to be logged in with Player Companion enabled." });
   }
   const id = randomUUID();
   return new Promise(resolvePromise => {
@@ -328,7 +328,7 @@ const heartbeat = setInterval(() => {
   }
 }, 30_000);
 
-server.listen(PORT, () => log(`Sheet Relay listening on :${PORT}`));
+server.listen(PORT, () => log(`Player Companion relay listening on :${PORT}`));
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {

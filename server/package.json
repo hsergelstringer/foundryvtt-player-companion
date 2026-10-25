@@ -1,7 +1,7 @@
 {
-  "name": "sheet-relay-server",
+  "name": "player-companion-relay",
   "version": "0.1.0",
-  "description": "Relay between the Sheet Relay Foundry VTT module and the player web app / REST API.",
+  "description": "Relay between the Player Companion Foundry VTT module and the player web app / REST API.",
   "type": "module",
   "main": "server.js",
   "private": true,

@@ -1,11 +1,11 @@
 /**
- * Player web app for Sheet Relay. No framework: state lives in `state`, and
+ * Player web app for Player Companion. No framework: state lives in `state`, and
  * render() rebuilds the page from it. All text goes in through textContent.
  */
 
-const TOKEN_KEY = "sheet-relay.token";
-const ACTOR_KEY = "sheet-relay.actor";
-const TAB_KEY = "sheet-relay.tab";
+const TOKEN_KEY = "player-companion.token";
+const ACTOR_KEY = "player-companion.actor";
+const TAB_KEY = "player-companion.tab";
 
 const state = {
   token: null,
@@ -259,10 +259,10 @@ function render() {
 }
 
 function loginView() {
-  const input = el("input", { type: "password", name: "token", placeholder: "sr_…", autocomplete: "off", required: true });
+  const input = el("input", { type: "password", name: "token", placeholder: "pc_…", autocomplete: "off", required: true });
   return el("section", { class: "card login" },
     el("h1", {}, "Character Sheet"),
-    el("p", {}, "Paste the access token from Foundry (Game Settings → Sheet Relay → New token), or open the sign-in link it gave you."),
+    el("p", {}, "Paste the access token from Foundry (Game Settings → Player Companion → New token), or open the sign-in link it gave you."),
     state.error && el("p", { class: "error" }, state.error),
     el("form", {
       onsubmit: event => {
