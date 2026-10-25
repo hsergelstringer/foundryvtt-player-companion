@@ -1,0 +1,66 @@
+<div class="sheet-relay-settings standard-form">
+  {{#if isGM}}
+  <fieldset>
+    <legend>Relay connection (this browser only)</legend>
+    <p class="hint">Status: <strong>{{statusLabel}}</strong>{{#if error}}. {{error}}{{/if}}</p>
+    <div class="form-group">
+      <label>Relay URL</label>
+      <div class="form-fields"><input type="url" name="relayUrl" value="{{relayUrl}}" placeholder="https://sheets.example.net"></div>
+    </div>
+    <div class="form-group">
+      <label>Relay secret</label>
+      <div class="form-fields"><input type="password" name="relaySecret" value="" placeholder="{{#if hasSecret}}(saved, leave blank to keep){{else}}RELAY_SECRET from the server{{/if}}" autocomplete="off"></div>
+    </div>
+    <p class="hint">Stored only in this browser, never sent to players. Keep this browser logged in as GM while players use the web app.</p>
+    <div class="form-group">
+      <label>Player web app URL</label>
+      <div class="form-fields"><input type="url" name="appUrl" value="{{appUrl}}" placeholder="https://sheets.example.net"></div>
+    </div>
+    <p class="hint">Shared with players so new tokens come with a sign-in link. Usually the same as the relay URL.</p>
+    <div class="form-footer">
+      <button type="submit"><i class="fa-solid fa-floppy-disk"></i> Save and connect</button>
+      {{#if (eq status "connected")}}
+      <button type="button" data-action="disconnect"><i class="fa-solid fa-plug-circle-xmark"></i> Disconnect</button>
+      {{else}}
+      <button type="button" data-action="connect"><i class="fa-solid fa-plug"></i> Connect</button>
+      {{/if}}
+    </div>
+  </fieldset>
+  {{else}}
+  <p>Create a token to use your character from the web app{{#if appUrl}} at <strong>{{appUrl}}</strong>{{/if}}. The GM needs to be logged in for it to work.</p>
+  {{/if}}
+
+  <fieldset>
+    <legend>Access tokens</legend>
+    {{#each users}}
+    <div class="sheet-relay-user">
+      <header>
+        <strong>{{name}}</strong>{{#if isGM}} <em>(GM)</em>{{/if}}
+        <button type="button" data-action="createToken" data-user-id="{{id}}"><i class="fa-solid fa-key"></i> New token</button>
+      </header>
+      {{#if tokens.length}}
+      <ul>
+        {{#each tokens}}
+        <li>
+          <span>{{label}} <span class="hint">created {{createdLabel}}</span></span>
+          <button type="button" data-action="revokeToken" data-user-id="{{../id}}" data-token-id="{{id}}" data-tooltip="Revoke"><i class="fa-solid fa-trash"></i></button>
+        </li>
+        {{/each}}
+      </ul>
+      {{else}}
+      <p class="hint">No tokens.</p>
+      {{/if}}
+    </div>
+    {{/each}}
+  </fieldset>
+</div>
+
+<style>
+  .sheet-relay-settings .sheet-relay-user { margin-bottom: 0.5rem; }
+  .sheet-relay-settings .sheet-relay-user header { display: flex; align-items: center; gap: 0.5rem; }
+  .sheet-relay-settings .sheet-relay-user header button { margin-left: auto; flex: 0 0 auto; width: auto; }
+  .sheet-relay-settings ul { list-style: none; margin: 0.25rem 0 0; padding: 0; }
+  .sheet-relay-settings li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+  .sheet-relay-settings li button { flex: 0 0 2rem; width: 2rem; }
+  .sheet-relay-settings .form-footer { display: flex; gap: 0.5rem; }
+</style>
