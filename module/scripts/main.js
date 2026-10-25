@@ -1,3 +1,16 @@
+/**
+ * Player Companion: lets players manage their dnd5e characters from a phone.
+ *
+ * This file wires the module together:
+ *  - Tokens: player access tokens, stored as hashes in user flags.
+ *  - Relay: the GM browser's WebSocket to the relay server. Requests arrive
+ *    here, are checked against a token, and run as ACTIONS (actions.js).
+ *  - Change notifications: Foundry hooks that tell the relay which users'
+ *    characters changed, so their apps refresh.
+ *  - RelaySettings: the settings window for connecting and managing tokens.
+ *
+ * See docs/DEVELOPMENT.md for how the pieces fit together.
+ */
 import { ACTIONS, RelayError } from "./actions.js";
 import { registerItemSettings, setupItems } from "./items.js";
 import { sha256Hex } from "./sha256.js";
