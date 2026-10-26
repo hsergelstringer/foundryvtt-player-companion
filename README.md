@@ -20,7 +20,7 @@ Foundry modules run in the browser and can't accept connections, so the module i
 - **Party inventory:** see the party's shared items and coin, give items and coin to the party and take them out, with a log of who did what.
 - **Combat:** the turn order of the current combat, with whose turn it is and who's up next, and enter the initiative they rolled at the table.
 - **Custom trackers** for anything the sheet doesn't cover.
-- **Add items and spells from compendiums**, and remove them, with the GM's approval if the GM wants it.
+- **Add items and spells from compendiums**, or simple custom items, and remove them, with the GM's approval if the GM wants it.
 
 The web app works in any modern phone browser and can be added to the home screen. It follows the phone's light or dark mode.
 
@@ -89,7 +89,9 @@ All in **Configure Settings → Player Companion**.
 
 The Gear and Spells tabs have **Add item** and **Add spell**. Players search by name, filter by type, spell level or compendium, read an entry, and add it. Items arrive the way they do when dropped on the dnd5e sheet: containers bring their contents, nothing arrives equipped, identical consumables stack, and spells get the character's spellcasting class. Opening an item on the sheet shows **Remove**.
 
-- With **GM approval**, each GM gets a whispered chat card with **Approve** and **Deny**. The player sees the request as waiting and can withdraw it. A denied request shows until the player dismisses it.
+For something that isn't in any compendium (a keepsake, a letter, a strange key), **Make a custom item** in the same panel takes a name and a description. It arrives as loot, and works for the party's inventory too. The description is kept as plain text, so it can't roll dice or link to anything.
+
+- With **GM approval**, each GM gets a whispered chat card with **Approve** and **Deny** (for a custom item, with its description). The player sees the request as waiting and can withdraw it. A denied request shows until the player dismisses it.
 - With **direct changes**, the change happens at once and the GMs get a note in chat.
 
 Players only see compendiums they can open in Foundry. To keep one out of the app, set its ownership for players to **None**. Only physical items and spells can be added or removed this way; classes, features and anything with level-up steps still go through Foundry.

@@ -668,6 +668,18 @@ export const ACTIONS = {
     return { actor: serializeActor(actor, user), notice };
   },
 
+  /**
+   * Body: { name, description?, toParty? }. A simple custom item (loot with a description), following
+   * the same setting as compendium adds. Returns { actor, notice }.
+   */
+  async addCustomItem(user, { actorId, name, description, toParty }) {
+    const actor = ownedActor(user, actorId);
+    const party = toParty === true || actor.type === "group" ? Party.requireParty(actor, { edit: true }) : null;
+    const custom = Items.customItem({ name, description });
+    const notice = await Items.requestChange(user, party ?? actor, { kind: "add", custom, via: party && party !== actor ? actor : null });
+    return { actor: serializeActor(actor, user), notice };
+  },
+
   /** Body: { itemId }. Removes an item or spell, or asks the GM to. Returns { actor, notice }. */
   async removeItem(user, { actorId, itemId }) {
     const actor = ownedActor(user, actorId);

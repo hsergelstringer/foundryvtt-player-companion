@@ -97,6 +97,7 @@ Each action is `POST /api/actors/:id/<action>`. Unless noted, it returns the upd
 | --- | --- | --- |
 | `searchItems` | `{ "kind": "item", "query": "rope" }`, also `pack`, `type`, and `level` for spells | Returns `{ total, results, packs }`. At most 50 results, from compendiums the user can see. |
 | `itemDetails` | `{ "uuid": "Compendium.…" }` | A search result in full, with `description` and `descriptionHtml` |
+| `addCustomItem` | `{ "name": "Locket", "description": "Silver, dented." }` | A custom item: loot with that name and the description as plain text (blank lines make paragraphs; nothing in it is enriched). Name up to 100 characters, description up to 4000. Follows the same setting as `addItem`, and takes `"toParty": true` the same way. Returns `{ actor, notice }`. |
 | `addItem` | `{ "uuid": "Compendium.…", "quantity": 1 }` | Adds the item, or asks the GM to. Returns `{ actor, notice }`. Add `"toParty": true` to add an item (not a spell) to the character's party instead; on a Group actor it always goes to the group. |
 | `removeItem` | `{ "itemId": "…" }` | Removes the item, or asks the GM to. Returns `{ actor, notice }`. |
 | `cancelItemRequest` | `{ "requestId": "…" }` | Withdraws a waiting request or dismisses a denied one. With `"toParty": true` (or on a Group), a party request; only the user who made it can. |

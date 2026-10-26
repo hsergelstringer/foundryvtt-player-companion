@@ -329,9 +329,47 @@ describe("compendium items", () => {
     assert.equal(world.isen.items.find(i => i.name === "Cure Wounds").system.method, "spell");
   });
 
+  test("a custom item waits for approval, with what the player wrote on the GM's card", async () => {
+    await game.settings.set("player-companion", "itemChanges", "approve");
+    const { data } = await act("addCustomItem", { name: "  Grandmother's   locket ", description: "Silver, dented.\n\nOpens with a click." });
+    assert.match(data.notice, /Asked the GM to add Grandmother's locket/);
+    const [request] = data.actor.itemChanges.requests;
+    const card = world.messages.find(m => m.flags["player-companion"]?.requestId === request.id).content;
+    assert.match(card, /a custom item, <strong>Grandmother(&#x27;|')s locket<\/strong>, to/);
+    assert.match(card, /Opens with a click/);
+
+    await Items.resolveRequest(request.id, true);
+    const locket = world.isen.items.find(i => i.name === "Grandmother's locket");
+    assert.equal(locket.type, "loot");
+    assert.equal(locket.system.price, undefined, "no price");
+    assert.equal(locket.system.description.value, "<p>Silver, dented.</p><p>Opens with a click.</p>");
+    await locket.delete();
+  });
+
+  test("a custom item's text can't run, roll or embed anything", async () => {
+    await game.settings.set("player-companion", "itemChanges", "direct");
+    const { data } = await act("addCustomItem", { name: "Note", description: "<script>x</script> [[/r 1d20]] @Embed[JournalEntry.secret] {@damage 2d6}\nline" });
+    assert.equal(data.notice, "Added Note");
+    const note = world.isen.items.find(i => i.name === "Note");
+    const html = note.system.description.value;
+    assert.ok(!html.includes("<script>") && !html.includes("[[") && !html.includes("@"), html);
+    assert.match(html, /&lt;script&gt;/);
+    assert.match(html, /<br>line/);
+    await note.delete();
+    await game.settings.set("player-companion", "itemChanges", "approve");
+  });
+
+  test("custom items need a name, and a description that isn't too long", async () => {
+    assert.equal((await act("addCustomItem", { name: "   " })).status, 400);
+    assert.equal((await act("addCustomItem", { name: "x".repeat(101) })).status, 400);
+    assert.equal((await act("addCustomItem", { name: "Gem", description: "x".repeat(4001) })).status, 400);
+    assert.equal((await act("addCustomItem", { name: "Gem" }, tokens.other)).status, 404, "someone else's character");
+  });
+
   test("with the setting off, nothing can be added or removed", async () => {
     await game.settings.set("player-companion", "itemChanges", "off");
     assert.equal((await act("addItem", { uuid: "Compendium.dnd5e.items.Item.longsword" })).status, 403);
+    assert.equal((await act("addCustomItem", { name: "Gem" })).status, 403);
     assert.equal((await act("removeItem", { itemId: "hammer" })).status, 403);
     await game.settings.set("player-companion", "itemChanges", "approve");
   });
@@ -523,6 +561,14 @@ describe("party inventory", () => {
 
     assert.equal((await act("addItem", { uuid: "Compendium.dnd5e.spells.Item.cure", toParty: true })).status, 400);
     assert.equal((await act("addItem", { uuid: "Compendium.dnd5e.items.Item.longsword", toParty: true }, tokens.other)).status, 404);
+  });
+
+  test("custom items can go to the party", async () => {
+    await game.settings.set("player-companion", "itemChanges", "direct");
+    const { data } = await act("addCustomItem", { name: "Strange map", toParty: true });
+    assert.equal(data.notice, "Added Strange map to The Company");
+    assert.ok(partyItem(data.actor, "Strange map"));
+    await waitFor(() => Party.partyLog(world.party)[0]?.text === "added Strange map", "the log entry");
   });
 
   test("with GM approval, a party add waits as a request only its maker can withdraw", async () => {

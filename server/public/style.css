@@ -112,12 +112,13 @@ button.danger-text { color: var(--danger); }
 .icon-button { width: 42px; padding: 0; background: transparent; color: var(--muted); }
 .icon-button .icon { width: 22px; height: 22px; }
 
-input[type="number"], input[type="password"], input[type="text"], input[type="search"], select {
+input[type="number"], input[type="password"], input[type="text"], input[type="search"], select, textarea {
   font: inherit; color: inherit;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
   padding: 8px 12px; min-height: 42px; width: 100%; min-width: 0;
 }
-input::placeholder { color: var(--muted); opacity: 0.8; }
+textarea { resize: vertical; line-height: 1.4; }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.8; }
 input[type="number"] { -moz-appearance: textfield; }
 input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
@@ -433,6 +434,9 @@ button.initiative.editable { padding: 0; border-radius: var(--radius-sm); border
 .adder-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .adder-filters .search-box { grid-column: 1 / -1; }
 .adder-filters select:only-of-type { grid-column: 1 / -1; }
+.custom-item { align-self: flex-start; gap: 6px; }
+.custom-item .icon { width: 16px; height: 16px; }
+.custom-item-form { display: flex; flex-direction: column; gap: 10px; }
 .search-box { position: relative; display: block; }
 .search-box .icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); width: 18px; height: 18px; }
 .search-box input { padding-left: 38px; }

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+**Added**
+- Custom items: **Make a custom item** in the Add item panel takes a name and a description, for things that aren't in any compendium. It arrives as loot, goes to the character or the party, and follows the *Adding and removing items* setting; the GM's approval card shows the description. The description is stored as plain text, so it can't roll, link or embed anything.
+
+**API**
+- New `addCustomItem` action.
+
 ## 0.0.16
 
 **Changed**

@@ -1,5 +1,6 @@
 /**
- * Adding items and spells from compendiums, and removing them, from the web app.
+ * Adding items and spells from compendiums, adding simple custom items (a name
+ * and a description), and removing them, from the web app.
  *
  * The world setting "itemChanges" decides what happens:
  *  - "approve": each change becomes a request. The GMs get a whispered chat
@@ -29,6 +30,10 @@ export const ITEM_TYPES = new Set(["weapon", "equipment", "consumable", "tool", 
 const SPELL_TYPES = new Set(["spell"]);
 const typesFor = kind => (kind === "spell" ? SPELL_TYPES : ITEM_TYPES);
 export const isManaged = item => ITEM_TYPES.has(item.type) || SPELL_TYPES.has(item.type);
+
+const CUSTOM_IMG = "icons/svg/item-bag.svg";
+const MAX_NAME = 100;
+const MAX_DESCRIPTION = 4000;
 
 const INDEX_FIELDS = ["system.level", "system.school", "system.price", "system.rarity"];
 
@@ -144,6 +149,41 @@ export async function compendiumItem(user, uuid, kind = null) {
 }
 
 /* -------------------------------------------- */
+/*  Custom items                                */
+/* -------------------------------------------- */
+
+/** A player's custom item, checked and tidied: { name, description }. */
+export function customItem({ name, description = "" } = {}) {
+  const cleanName = String(name ?? "").replace(/\s+/g, " ").trim();
+  if (!cleanName) throw new RelayError(400, "Give the item a name");
+  if (cleanName.length > MAX_NAME) throw new RelayError(400, `Keep the name under ${MAX_NAME} characters`);
+  const text = String(description ?? "").replace(/\r\n?/g, "\n").trim();
+  if (text.length > MAX_DESCRIPTION) throw new RelayError(400, `Keep the description under ${MAX_DESCRIPTION} characters`);
+  return { name: cleanName, description: text };
+}
+
+/**
+ * Plain text as description HTML: escaped, paragraphs at blank lines, and with
+ * Foundry's enricher syntax (@UUID, @Embed, [[/r]], 5etools {@…}) broken up,
+ * so a player's text can't roll, link or embed anything the GM's browser can see.
+ */
+function descriptionHtml(text) {
+  if (!text) return "";
+  return text.split(/\n\s*\n/)
+    .map(p => `<p>${esc(p).replace(/@/g, "&#64;").replace(/\[\[/g, "&#91;&#91;").replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function customData({ name, description }) {
+  return { name, type: "loot", img: CUSTOM_IMG, system: { description: { value: descriptionHtml(description) }, quantity: 1 } };
+}
+
+/** Create a custom item on the actor. Runs in a GM's browser. */
+async function addCustomToActor(actor, custom) {
+  await CONFIG.Item.documentClass.createDocuments([customData(custom)], { parent: actor });
+}
+
+/* -------------------------------------------- */
 /*  Changing the actor                          */
 /*  Runs in a GM's browser: the relay GM for    */
 /*  direct changes, any GM for approvals.       */
@@ -211,11 +251,15 @@ function describeRequest(request) {
 }
 
 function cardHeader(request) {
-  // A "}" in the name would end the link label early.
-  const link = request.uuid ? `@UUID[${request.uuid}]{${esc(request.name).replace(/[{}]/g, "")}}` : `<strong>${esc(request.name)}</strong>`;
-  const what = request.quantity > 1 ? `${link} (×${request.quantity})` : link;
+  // A "}" in the name would end the link label early. A custom item's name is the player's text, so @ is broken up.
+  const link = request.uuid ? `@UUID[${request.uuid}]{${esc(request.name).replace(/[{}]/g, "")}}` : `<strong>${esc(request.name).replace(/@/g, "&#64;")}</strong>`;
+  const what = request.custom
+    ? `a custom item, ${link},`
+    : request.quantity > 1 ? `${link} (×${request.quantity})` : link;
   const action = request.kind === "add" ? `add ${what} to` : `remove ${what} from`;
-  return `<p><strong>${esc(request.userName)}</strong> asks to ${action} <strong>${esc(request.actorName)}</strong>.</p>`;
+  const header = `<p><strong>${esc(request.userName)}</strong> asks to ${action} <strong>${esc(request.actorName)}</strong>.</p>`;
+  // The GM sees what the player wrote before approving it.
+  return request.custom?.description ? `${header}<blockquote class="pc-request-description">${descriptionHtml(request.custom.description)}</blockquote>` : header;
 }
 
 function cardContent(request, outcome = null) {
@@ -256,15 +300,18 @@ function added(actor, request) {
  * Queue a change for the GM, or make it now if the GM allows direct changes.
  * @param {User} user
  * @param {Actor} actor
- * @param {{ kind: "add", source: Item, quantity?: number, via?: Actor } | { kind: "remove", item: Item }} change
- *   `via` is the character a party add was made from, for the party's log.
+ * @param {{ kind: "add", source?: Item, custom?: object, quantity?: number, via?: Actor } | { kind: "remove", item: Item }} change
+ *   An add has a compendium `source`, or a `custom` item from customItem(). `via` is the character a
+ *   party add was made from, for the party's log.
  * @returns {Promise<string>}  What happened, to show the player
  */
 export async function requestChange(user, actor, change) {
   const mode = itemChangeMode();
   if (mode === "off") throw new RelayError(403, "The GM hasn't allowed adding or removing items from the web app");
 
-  const subject = change.kind === "add" ? change.source : change.item;
+  const custom = change.kind === "add" ? change.custom ?? null : null;
+  const subject = custom ? { name: custom.name, img: CUSTOM_IMG, type: "loot", uuid: null }
+    : change.kind === "add" ? change.source : change.item;
   const quantity = change.kind === "add" ? change.quantity ?? null : null;
   const request = {
     id: foundry.utils.randomID(),
@@ -280,13 +327,19 @@ export async function requestChange(user, actor, change) {
     img: subject.img,
     type: subject.type,
     quantity,
+    custom,
     viaName: change.via?.name ?? null,
     created: Date.now()
   };
 
   if (mode === "direct" || user.isGM) {
     let result;
-    if (change.kind === "add") {
+    if (custom) {
+      await addCustomToActor(actor, custom);
+      added(actor, request);
+      result = change.via ? `Added ${subject.name} to ${actor.name}` : `Added ${subject.name}`;
+    }
+    else if (change.kind === "add") {
       const { stacked } = await addToActor(actor, change.source, { quantity });
       added(actor, request);
       if (change.via) result = `Added ${subject.name} to ${actor.name}`;
@@ -334,7 +387,11 @@ async function resolve(requestId, approve) {
     try {
       const actor = game.actors.get(request.actorId);
       if (!actor) throw new Error(`${request.actorName} no longer exists`);
-      if (request.kind === "add") {
+      if (request.custom) {
+        await addCustomToActor(actor, request.custom);
+        added(actor, request);
+      }
+      else if (request.kind === "add") {
         const source = await foundry.utils.fromUuid(request.uuid);
         if (!source) throw new Error(`${request.name} is no longer in its compendium`);
         await addToActor(actor, source, { quantity: request.quantity });

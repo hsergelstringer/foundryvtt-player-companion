@@ -1124,8 +1124,30 @@ function adderView() {
       el("button", { class: "icon-button", onclick: () => { state.adder = null; render(); }, "aria-label": "Close search" }, icon("close"))),
     approve ? el("p", { class: "muted hint" },
       `The GM approves each addition before it reaches ${toParty ? "the party's inventory" : "your sheet"}.`) : null,
+    isSpell ? null : el("button", { class: "ghost small custom-item", onclick: () => customItemSheet(toParty, approve) },
+      icon("plus"), "Make a custom item"),
     filters,
     body);
+}
+
+/** A simple item that isn't in any compendium: a name and a description. */
+function customItemSheet(toParty, approve) {
+  const name = el("input", { type: "text", maxlength: 100, required: true, autofocus: true, placeholder: "Name", "aria-label": "Name" });
+  const text = el("textarea", { rows: 5, maxlength: 4000, placeholder: "Description (optional)", "aria-label": "Description" });
+  openSheet(toParty ? `Custom item for ${state.actor.party.name}` : "Custom item", close => el("form", {
+    class: "sheet-body custom-item-form",
+    onsubmit: e => {
+      e.preventDefault();
+      if (!name.value.trim()) return name.focus();
+      close();
+      act("addCustomItem", { name: name.value.trim(), description: text.value, ...(toParty ? { toParty: true } : {}) });
+    }
+  },
+    name, text,
+    approve ? el("p", { class: "muted hint" }, "The GM approves it first.") : null,
+    el("div", { class: "button-row" },
+      el("button", { type: "button", onclick: () => close() }, "Cancel"),
+      el("button", { type: "submit", class: "primary" }, approve ? "Ask GM" : "Add"))));
 }
 
 /* -------------------------------------------- */
