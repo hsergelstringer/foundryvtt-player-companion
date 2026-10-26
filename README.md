@@ -14,7 +14,7 @@ Foundry modules run in the browser and can't accept connections, so the module i
 - **Traits:** senses, damage resistances, immunities and vulnerabilities, condition immunities, languages, and armor, weapon and tool proficiencies. Senses and defenses also show under hit points, where they matter mid-fight.
 - **Hit points:** take damage (temporary HP is used first), heal, set HP or temp HP. A bar pinned to the top keeps HP one tap away while scrolling.
 - **Spells:** slots as pips in each level's header, prepare and unprepare, and see casting time, range, components, duration, damage and description.
-- **Items and features:** uses (including actions with their own uses), quantities, equipped, attunement, currency, and full details: damage, to hit, properties, mastery, weight, price. Gear, the party's gear and features each have a search box.
+- **Items and features:** uses (including actions with their own uses), quantities, equipped, attunement, currency, and full details: damage, to hit, properties, mastery, weight, price. Gear, the party's gear, features and spells each have a search box.
 - **Descriptions** read as they do in Foundry: dice formulas filled in from the character, links and rules references as names, tables and lists kept.
 - **Rests**, hit dice, death saves, exhaustion and Heroic Inspiration.
 - **Party inventory:** see the party's shared items and coin, give items and coin to the party and take them out, with a log of who did what.

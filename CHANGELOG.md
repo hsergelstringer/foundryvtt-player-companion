@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+**Added**
+- A search box on the Spells tab. It matches names, summaries and schools, works with the Prepared filter, and shows only the levels with a match.
+
 ## 0.0.12
 
 **Added**

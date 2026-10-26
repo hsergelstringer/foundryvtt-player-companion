@@ -1067,14 +1067,16 @@ function spellRow(spell) {
 }
 
 function spellsView(a) {
-  const shown = a.items.spells.filter(s => state.spellFilter === "all" || s.level === 0 || s.preparation?.prepared);
+  const query = filters.spells.trim();
+  const shown = a.items.spells.filter(s => (state.spellFilter === "all" || s.level === 0 || s.preparation?.prepared) && matches(s, query));
   const byLevel = new Map();
   for (const spell of shown) {
     if (!byLevel.has(spell.level)) byLevel.set(spell.level, []);
     byLevel.get(spell.level).push(spell);
   }
   const slotFor = level => a.spellSlots.find(s => s.key === `spell${level}`);
-  const levels = new Set([...byLevel.keys(), ...a.spellSlots.filter(s => s.key !== "pact").map(s => s.level)]);
+  // While searching, only levels with a match; otherwise every level the character has slots or spells for.
+  const levels = new Set([...byLevel.keys(), ...(query ? [] : a.spellSlots.filter(s => s.key !== "pact").map(s => s.level))]);
   const pact = a.spellSlots.find(s => s.key === "pact");
   const setSlot = slot => v => act("spellSlot", { slot: slot.key, value: v }, () => { slot.value = v; });
   const casters = a.spellcasting.classes?.length
@@ -1100,7 +1102,9 @@ function spellsView(a) {
       searching ? null : addButton("spell")) : null,
     searching ? adderView() : null,
     requestsView(a, "spell"),
-    pact ? el("section", { class: "group" },
+    a.items.spells.length ? searchBox("spells", "Search spells") : null,
+    query && !shown.length ? el("p", { class: "muted empty" }, `Nothing matches “${query}”.`) : null,
+    pact && !query ? el("section", { class: "group" },
       el("header", { class: "level-head" },
         el("h2", {}, "Pact slots", el("small", { class: "muted" }, ` level ${pact.level}`)),
         pips(pact.value, pact.max, setSlot(pact)))) : null,
@@ -1187,11 +1191,11 @@ const showingParty = a => !!a.party && state.gearView === "party";
 
 /* Searching lists: what's typed in each list's box, by list. */
 
-const filters = { gear: "", party: "", features: "" };
+const filters = { gear: "", party: "", features: "", spells: "" };
 const fold = text => String(text ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
 
-/** Whether an item matches a search, by name or its one-line summary (type, damage, rarity…). */
-const matches = (item, query) => !query.trim() || fold(`${item.name} ${item.summary ?? ""}`).includes(fold(query).trim());
+/** Whether an item matches a search, by name, its one-line summary (type, damage, rarity…) or a spell's school. */
+const matches = (item, query) => !query.trim() || fold(`${item.name} ${item.summary ?? ""} ${item.school ?? ""}`).includes(fold(query).trim());
 
 function searchBox(key, placeholder) {
   return el("label", { class: "search-box" },
