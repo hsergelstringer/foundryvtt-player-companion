@@ -48,10 +48,17 @@ Errors are `{ "error": "message" }` with one of these statuses:
 
 | Method | Path | Body | Returns |
 | --- | --- | --- | --- |
-| GET | `/api/health` | | `{ relay, foundry, world }`; no token needed |
+| GET | `/api/health` | | `{ relay, foundry, world, images }`; no token needed. `images` is whether the relay serves Foundry's images |
 | GET | `/api/me` | | `{ user, world, characters }` |
 | GET | `/api/actors/:id` | | The [sheet](#the-sheet) |
 | POST | `/api/actors/:id/<action>` | See below | Usually the updated sheet |
+| GET | `/api/images/<path>` | | One of Foundry's images, when the relay has `FOUNDRY_URL` (see [Images](#images)) |
+
+### Images
+
+`img` fields are absolute URLs on the GM's Foundry address. If phones can't reach Foundry, a relay started with `FOUNDRY_URL` serves those images itself: for an `img` that starts with the `imageOrigin` from the [event stream](#live-updates), request `/api/images` followed by the URL's path, with the token in the `Authorization` header as usual. For example, `https://foundry.example.net/icons/svg/d20.svg` becomes `GET /api/images/icons/svg/d20.svg`.
+
+Only `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.avif` and `.svg` files are served, up to 20 MB. Responses can be cached privately for 5 minutes and carry Foundry's `ETag` and `Last-Modified`, so `If-None-Match` and `If-Modified-Since` work. A browser `<img>` can't send the header, so fetch the image and show it from a `blob:` URL, as the web app does. Without `FOUNDRY_URL` the route answers `404` and `imageOrigin` is `null`.
 
 ### Actions
 
@@ -191,13 +198,13 @@ You'll receive:
 
 | Message | When |
 | --- | --- |
-| `{ "type": "ready", "user": … }` | The token was accepted |
+| `{ "type": "ready", "user": …, "imageOrigin": … }` | The token was accepted. `imageOrigin` is the start of the image URLs the relay serves, or `null` (see [Images](#images)) |
 | `{ "type": "actorChanged", "actorId": "…" }` | One of your characters, or anything on it, changed |
 | `{ "type": "actorChanged", "actorId": "…", "memberIds": […] }` | A party one of your characters belongs to changed; `memberIds` are its characters |
 | `{ "type": "partyChanged" }` | The party inventory setting changed |
 | `{ "type": "trackersChanged" }` | Party trackers or tracker templates changed |
 | `{ "type": "requestsChanged" }` | Item requests or the item setting changed |
-| `{ "type": "foundry", "connected": false }` | The GM's browser disconnected (and `true` when it's back) |
+| `{ "type": "foundry", "connected": false }` | The GM's browser disconnected (and `true` when it's back, with `imageOrigin`) |
 
 Changes you make yourself also come back as events. The socket closes with code `4001` if the token is revoked.
 

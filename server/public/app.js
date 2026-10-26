@@ -20,6 +20,7 @@ const state = {
   tab: "stats",
   error: null,
   foundry: true,
+  imageOrigin: null, // image URLs starting with this come through the relay, see img()
   open: new Set(), // expanded item rows
   spellFilter: "all",
   gearView: "character", // the Gear tab shows the character's inventory or the party's
@@ -52,8 +53,48 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+/** Images fetched through the relay, by path: a promise of a blob: URL, or of null if it failed. */
+const relayImages = new Map();
+
+/** The relay's path for one of Foundry's images, when the relay serves them (its FOUNDRY_URL is set). */
+function relayImagePath(src) {
+  if (!state.imageOrigin) return null;
+  try {
+    const url = new URL(src);
+    return url.origin === state.imageOrigin ? `api/images${url.pathname}` : null;
+  }
+  catch { return null; }
+}
+
+/** <img> can't send the token, so these are fetched with it and shown from a blob: URL. */
+function relayImage(path) {
+  if (!relayImages.has(path)) {
+    relayImages.set(path, fetch(path, { headers: { Authorization: `Bearer ${state.token}` } })
+      .then(res => (res.ok ? res.blob() : null))
+      .then(blob => (blob ? URL.createObjectURL(blob) : null))
+      .catch(() => null));
+  }
+  return relayImages.get(path);
+}
+
+/** Forget images that failed, so they're tried again (e.g. once Foundry is back). */
+function retryFailedImages() {
+  for (const [path, image] of relayImages) image.then(url => { if (!url) relayImages.delete(path); });
+}
+
+function forgetImages() {
+  for (const image of relayImages.values()) image.then(url => url && URL.revokeObjectURL(url));
+  relayImages.clear();
+}
+
 /** An image that removes itself if it fails to load (e.g. a Foundry path the browser can't reach). */
-const img = (src, cls) => (src ? el("img", { src, alt: "", class: cls, onerror: e => e.target.remove() }) : null);
+function img(src, cls) {
+  if (!src) return null;
+  const path = relayImagePath(src);
+  const node = el("img", { src: path ? null : src, alt: "", class: cls, onerror: e => e.target.remove() });
+  if (path) relayImage(path).then(url => (url ? node.src = url : node.remove()));
+  return node;
+}
 
 /** A portrait over the name's initials, so a missing or broken image still looks deliberate. */
 function avatar(src, name, cls) {
@@ -285,12 +326,17 @@ function connectEvents() {
     const msg = JSON.parse(event.data);
     if (msg.type === "ready") {
       eventsRetry = 1000;
+      setImageOrigin(msg.imageOrigin);
       setFoundry(true);
       if (!state.me) loadMe().catch(handleError);
     }
     else if (msg.type === "foundry") {
       setFoundry(msg.connected);
-      if (msg.connected) refresh();
+      if (msg.connected) {
+        retryFailedImages();
+        setImageOrigin(msg.imageOrigin);
+        refresh();
+      }
     }
     else if (msg.type === "error" && msg.status === 503) setFoundry(false);
     // Our own changes come back as events too; the queue already has the answer.
@@ -307,6 +353,15 @@ function connectEvents() {
     setTimeout(() => state.token && connectEvents(), eventsRetry);
     eventsRetry = Math.min(eventsRetry * 2, 30_000);
   });
+}
+
+/** Where Foundry's images are, as the relay announces it; null when images load straight from Foundry. */
+function setImageOrigin(origin) {
+  origin ??= null;
+  if (origin === state.imageOrigin) return;
+  state.imageOrigin = origin;
+  forgetImages();
+  if (state.me) render();
 }
 
 function setFoundry(connected) {
@@ -360,6 +415,7 @@ function signOut(message) {
   closeSheet?.(null);
   state.token = state.me = state.actor = state.actorId = null;
   state.error = message ?? null;
+  forgetImages();
   storage.set(TOKEN_KEY, null);
   storage.set(ACTOR_KEY, null);
   const socket = events;

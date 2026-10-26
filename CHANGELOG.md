@@ -3,7 +3,11 @@
 ## Unreleased
 
 **Added**
+- The relay can serve Foundry's images, for players whose phones can't reach Foundry (it's only on the home network, or behind a login). Set `FOUNDRY_URL` on the relay to Foundry's address as the relay reaches it; leave it unset to load images straight from Foundry as before. Images still need the player's token.
 - A search box on the Spells tab. It matches names, summaries and schools, works with the Prepared filter, and shows only the levels with a match.
+
+**API**
+- New `GET /api/images/<path>` when the relay has `FOUNDRY_URL`. Health has `images`; the event stream's `ready` and `foundry` messages have `imageOrigin`. The module now sends its Foundry address when it connects, so update the module and the relay together.
 
 ## 0.0.12
 

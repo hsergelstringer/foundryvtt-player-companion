@@ -28,10 +28,37 @@ const MAX_BODY_BYTES = 64 * 1024;
 /** Sheets are sent whole after every change; above this size they're worth compressing. */
 const GZIP_MIN_BYTES = 1024;
 const gzipAsync = promisify(gzip);
+/** Foundry's address as this server reaches it. When set, the relay serves Foundry's images to the app itself. */
+const FOUNDRY_URL = process.env.FOUNDRY_URL?.trim() || null;
+const IMAGE_TYPES = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".avif": "image/avif",
+  ".svg": "image/svg+xml"
+};
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+/** How long a token checked for an image request is trusted without asking Foundry again. */
+const TOKEN_CHECK_MS = 60_000;
 
 if (SECRET.length < 16) {
   console.error("RELAY_SECRET must be set to at least 16 characters.");
   process.exit(1);
+}
+
+let foundryOrigin = null;
+if (FOUNDRY_URL) {
+  try {
+    const url = new URL(FOUNDRY_URL);
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error();
+    foundryOrigin = url.origin;
+  }
+  catch {
+    console.error("FOUNDRY_URL must be an http:// or https:// address, e.g. http://foundry:30000");
+    process.exit(1);
+  }
 }
 
 const log = (...args) => console.log(new Date().toISOString(), ...args);
@@ -54,7 +81,7 @@ function secretMatches(candidate) {
 
 function attachWorld(ws, hello) {
   if (world) world.socket.close(4000, "Replaced by a newer Foundry connection");
-  world = { socket: ws, worldId: hello.world, worldTitle: hello.title, connectedAt: new Date().toISOString() };
+  world = { socket: ws, worldId: hello.world, worldTitle: hello.title, origin: originOf(hello.origin), connectedAt: new Date().toISOString() };
   log(`Foundry connected: ${hello.title ?? hello.world ?? "unknown world"}`);
 
   ws.on("message", raw => {
@@ -68,7 +95,10 @@ function attachWorld(ws, hello) {
       waiting.resolve(msg);
     }
     else if (msg.type === "event") broadcast(msg.userIds ?? [], msg.payload);
-    else if (msg.type === "revoke") recheckUser(msg.userId);
+    else if (msg.type === "revoke") {
+      forgetUser(msg.userId);
+      recheckUser(msg.userId);
+    }
   });
 
   ws.on("close", () => {
@@ -83,8 +113,20 @@ function attachWorld(ws, hello) {
     broadcastAll({ type: "foundry", connected: false });
   });
 
-  broadcastAll({ type: "foundry", connected: true });
+  broadcastAll({ type: "foundry", connected: true, imageOrigin: imageOrigin() });
 }
+
+/** The origin of a URL, or null if it isn't an http(s) URL. */
+function originOf(value) {
+  try {
+    const url = new URL(String(value ?? ""));
+    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : null;
+  }
+  catch { return null; }
+}
+
+/** Image URLs starting with this are served by the relay; null when it doesn't serve images. */
+const imageOrigin = () => (foundryOrigin && world?.origin) || null;
 
 /** Send a request to Foundry and wait for its reply. */
 function forward(token, action, params = {}) {
@@ -144,7 +186,7 @@ function attachSubscriber(ws) {
       return ws.close(reply.status === 401 ? 4001 : 4003, reply.error?.slice(0, 120));
     }
     subscribers.set(ws, { token: msg.token, userId: reply.data.user.id });
-    ws.send(JSON.stringify({ type: "ready", user: reply.data.user, foundry: true }));
+    ws.send(JSON.stringify({ type: "ready", user: reply.data.user, foundry: true, imageOrigin: imageOrigin() }));
   });
   ws.on("close", () => {
     clearTimeout(authTimer);
@@ -218,12 +260,116 @@ function bearerToken(req) {
   return match?.[1] ?? null;
 }
 
+/* -------------------------------------------- */
+/*  Images                                      */
+/* -------------------------------------------- */
+
+/** Tokens recently confirmed for image requests: token -> { userId, until }. A sheet has dozens of images. */
+const checkedTokens = new Map();
+
+function forgetUser(userId) {
+  for (const [token, entry] of checkedTokens) if (entry.userId === userId) checkedTokens.delete(token);
+}
+
+/** Check a token with Foundry, at most once a minute per token. Revoking a token forgets it at once. */
+async function checkToken(token) {
+  const known = checkedTokens.get(token);
+  if (known && known.until > Date.now()) return { ok: true };
+  const reply = await forward(token, "me");
+  if (!reply.ok) {
+    checkedTokens.delete(token);
+    return reply;
+  }
+  if (checkedTokens.size >= 1000) {
+    for (const [key, entry] of checkedTokens) if (entry.until <= Date.now()) checkedTokens.delete(key);
+  }
+  checkedTokens.set(token, { userId: reply.data.user.id, until: Date.now() + TOKEN_CHECK_MS });
+  return reply;
+}
+
+/**
+ * Serve one of Foundry's images from FOUNDRY_URL, for players whose phones
+ * can't reach Foundry. Only image files, only from Foundry, only with a
+ * working token.
+ */
+async function sendImage(req, res, token, path) {
+  if (req.method !== "GET") return sendJSON(req, res, 405, { error: "Images can only be fetched with GET" });
+  if (!foundryOrigin) return sendJSON(req, res, 404, { error: "This relay doesn't serve images; set FOUNDRY_URL to turn it on" });
+
+  const segments = path.split("/").slice(1);
+  let names;
+  try { names = segments.map(decodeURIComponent); }
+  catch { return sendJSON(req, res, 400, { error: "Bad image path" }); }
+  if (names.some(n => !n || n === "." || n === ".." || /[/\\\0]/.test(n))) return sendJSON(req, res, 400, { error: "Bad image path" });
+  const type = IMAGE_TYPES[extname(names.at(-1)).toLowerCase()];
+  if (!type) return sendJSON(req, res, 404, { error: "Not an image" });
+
+  const check = await checkToken(token);
+  if (!check.ok) return sendJSON(req, res, check.status ?? 401, { error: check.error ?? "Unknown error" });
+
+  const conditional = {};
+  for (const name of ["if-none-match", "if-modified-since"]) if (req.headers[name]) conditional[name] = req.headers[name];
+  let upstream;
+  try {
+    upstream = await fetch(`${foundryOrigin}/${segments.join("/")}`, {
+      headers: conditional, redirect: "manual", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    });
+  }
+  catch (err) {
+    log(`Could not fetch an image from FOUNDRY_URL: ${err.message}`);
+    return sendJSON(req, res, 502, { error: "Could not reach Foundry at FOUNDRY_URL" });
+  }
+
+  // Foundry lets a file be replaced at the same path, so cache briefly and revalidate.
+  const headers = { ...corsHeaders(req), "Cache-Control": "private, max-age=300" };
+  for (const name of ["etag", "last-modified"]) {
+    const value = upstream.headers.get(name);
+    if (value) headers[name] = value;
+  }
+  if (upstream.status === 304) {
+    res.writeHead(304, headers);
+    return res.end();
+  }
+  if (upstream.status !== 200) {
+    await upstream.body?.cancel();
+    return sendJSON(req, res, 404, { error: "Image not found" });
+  }
+  const tooLarge = () => sendJSON(req, res, 413, { error: "Image is too large" });
+  if (Number(upstream.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) {
+    await upstream.body?.cancel();
+    return tooLarge();
+  }
+  const chunks = [];
+  let size = 0;
+  try {
+    for await (const chunk of upstream.body) {
+      size += chunk.length;
+      if (size > MAX_IMAGE_BYTES) return tooLarge();
+      chunks.push(chunk);
+    }
+  }
+  catch (err) {
+    log(`Could not fetch an image from FOUNDRY_URL: ${err.message}`);
+    return sendJSON(req, res, 502, { error: "Could not reach Foundry at FOUNDRY_URL" });
+  }
+  res.writeHead(200, {
+    ...headers,
+    // The type comes from the extension, never from upstream; SVGs can't run scripts if opened directly.
+    "Content-Type": type,
+    "Content-Length": size,
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+  });
+  res.end(Buffer.concat(chunks));
+}
+
 /**
  * REST routes:
  *   GET  /api/health                      relay and Foundry status (no auth)
  *   GET  /api/me                          the token's user and their characters
  *   GET  /api/actors/:id                  a character sheet
  *   POST /api/actors/:id/:action          change something; JSON body holds parameters
+ *   GET  /api/images/:path                an image from Foundry (only with FOUNDRY_URL)
  */
 async function handleApi(req, res, path) {
   if (req.method === "OPTIONS") {
@@ -231,11 +377,12 @@ async function handleApi(req, res, path) {
     return res.end();
   }
   if (path === "/api/health") {
-    return sendJSON(req, res, 200, { relay: true, foundry: !!world, world: world?.worldTitle ?? null });
+    return sendJSON(req, res, 200, { relay: true, foundry: !!world, world: world?.worldTitle ?? null, images: !!foundryOrigin });
   }
 
   const token = bearerToken(req);
   if (!token) return sendJSON(req, res, 401, { error: "Missing Authorization: Bearer <token> header" });
+  if (path.startsWith("/api/images/")) return sendImage(req, res, token, path.slice("/api/images".length));
 
   let action, params = {};
   const parts = path.split("/").filter(Boolean); // ["api", ...]
@@ -286,7 +433,7 @@ async function serveStatic(req, res, path) {
       "Cache-Control": "no-cache",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
-      "Content-Security-Policy": "default-src 'self'; img-src 'self' data: https: http:; connect-src 'self' ws: wss:; frame-ancestors 'none'"
+      "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob: https: http:; connect-src 'self' ws: wss:; frame-ancestors 'none'"
     });
     res.end(req.method === "HEAD" ? undefined : body);
   }
@@ -347,7 +494,10 @@ const heartbeat = setInterval(() => {
   }
 }, 30_000);
 
-server.listen(PORT, () => log(`Player Companion relay listening on :${PORT}`));
+server.listen(PORT, () => {
+  log(`Player Companion relay listening on :${PORT}`);
+  if (foundryOrigin) log(`Serving Foundry's images from ${foundryOrigin}`);
+});
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {

@@ -87,7 +87,11 @@ describe("relay and tokens", () => {
   test("health needs no token and reports Foundry connected", async () => {
     const { status, data } = await call("GET", "health", null, null);
     assert.equal(status, 200);
-    assert.deepEqual(data, { relay: true, foundry: true, world: "Test World" });
+    assert.deepEqual(data, { relay: true, foundry: true, world: "Test World", images: false });
+  });
+
+  test("without FOUNDRY_URL, images aren't served", async () => {
+    assert.equal((await call("GET", "images/icons/svg/d20.svg")).status, 404);
   });
 
   test("missing and unknown tokens are refused", async () => {

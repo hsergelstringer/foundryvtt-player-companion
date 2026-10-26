@@ -137,7 +137,9 @@ const Relay = {
         type: "hello",
         secret: game.settings.get(MODULE_ID, "relaySecret"),
         world: game.world.id,
-        title: game.world.title
+        title: game.world.title,
+        // Image URLs in sheets start with this; a relay with FOUNDRY_URL serves those itself.
+        origin: window.location.origin
       }));
     });
 
