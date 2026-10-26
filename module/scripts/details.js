@@ -49,14 +49,6 @@ function weightText(sys) {
   return `${value} ${unitLabel}`;
 }
 
-function priceText(sys) {
-  const fromSystem = safe(() => sys.priceLabel);
-  if (fromSystem) return str(fromSystem);
-  const value = Number(sys.price?.value);
-  if (!value) return "";
-  return `${value} ${localize(CONFIG.DND5E.currencies?.[sys.price.denomination]?.abbreviation) || sys.price.denomination || "gp"}`;
-}
-
 function propertiesText(item) {
   const labels = item.labels?.properties;
   if (Array.isArray(labels)) {
@@ -121,8 +113,8 @@ export function itemFacts(item) {
     // Recovery shows next to the uses counter instead.
     ["Rarity", localize(CONFIG.DND5E.itemRarity?.[sys.rarity])],
     ["Attunement", attunement === "required" ? "Required" : attunement === "optional" ? "Optional" : ""],
-    ["Weight", weightText(sys)],
-    ["Price", priceText(sys)]
+    // No price: the table doesn't track what things cost.
+    ["Weight", weightText(sys)]
   ].filter(row => row && row[1]).map(([label, value]) => ({ label, value }));
 
   // One line for the collapsed row: what you need at the table without opening it.

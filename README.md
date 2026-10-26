@@ -14,7 +14,7 @@ Foundry modules run in the browser and can't accept connections, so the module i
 - **Traits:** senses, damage resistances, immunities and vulnerabilities, condition immunities, languages, and armor, weapon and tool proficiencies. Senses and defenses also show under hit points, where they matter mid-fight.
 - **Hit points:** take damage (temporary HP is used first), heal, set HP or temp HP. A bar pinned to the top keeps HP one tap away while scrolling.
 - **Spells:** slots as pips in each level's header, prepare and unprepare, and see casting time, range, components, duration, damage and description.
-- **Items and features:** uses (including actions with their own uses), quantities, equipped, attunement, currency, and full details: damage, to hit, properties, mastery, weight, price. Gear, the party's gear, features and spells each have a search box.
+- **Items and features:** uses (including actions with their own uses), quantities, equipped, attunement, currency, and full details: damage, to hit, properties, mastery, weight. Gear, the party's gear, features and spells each have a search box.
 - **Descriptions** read as they do in Foundry: dice formulas filled in from the character, links and rules references as names, tables and lists kept.
 - **Rests**, hit dice, death saves, exhaustion and Heroic Inspiration.
 - **Party inventory:** see the party's shared items and coin, give items and coin to the party and take them out, with a log of who did what.
@@ -112,9 +112,9 @@ Moved items arrive unequipped and unattuned. Consumables and loot stack onto a m
 
 ## Combat
 
-While a combat is set up, the web app shows a **Combat** tab with the turn order of the combat on the scene the GM is viewing. Players see what Foundry's own tracker shows them: hidden combatants are left out (except their own), nobody else's hit points are shown, and a hidden combatant's turn isn't marked. The tab gets a dot when it's one of the player's characters' turn, and "You're up next" shows a turn ahead. Defeated combatants are struck through, and effect reminders from other modules (like the Heroic Tracker's markers) show in their place in the order.
+While a combat is set up, the web app shows a **Combat** tab with the turn order of the combat on the scene the GM is viewing. Players see what Foundry's own tracker shows them: hidden combatants are left out (except their own), nobody else's hit points are shown, and a hidden combatant's turn isn't marked. The tab gets a dot when it's the turn of the character open in the app, and "You're up next" shows a turn ahead. Both follow the character, not the Foundry user, so a table sharing one player user still sees each phone's own character. Defeated combatants are struck through, and effect reminders from other modules (like the Heroic Tracker's markers) show in their place in the order.
 
-Players roll initiative at the table, then tap the dash next to their character and enter the total. It goes straight into Foundry, re-sorting the order; with dnd5e's dexterity tiebreaker on, the tiebreaker is added as dnd5e would. They can only enter it for their own characters, and the *Combat tracker in the web app* setting can limit them to looking, or turn the tab off.
+Players roll initiative at the table, then tap the dash next to their character (the one open in the app) and enter the total. It goes straight into Foundry, re-sorting the order; with dnd5e's dexterity tiebreaker on, the tiebreaker is added as dnd5e would. They can only enter it for their own characters, and the *Combat tracker in the web app* setting can limit them to looking, or turn the tab off.
 
 ## Trackers
 

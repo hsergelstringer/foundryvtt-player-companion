@@ -262,7 +262,7 @@ function groupItems(list, serialize) {
 }
 
 /** What a stash needs to say about an item. To hit, damage, saves and uses depend on who wields it, so they're left out. */
-const PARTY_DETAILS = new Set(["Type", "Properties", "Rarity", "Attunement", "Weight", "Price"]);
+const PARTY_DETAILS = new Set(["Type", "Properties", "Rarity", "Attunement", "Weight"]);
 
 /** A party item: name, quantity, inventory facts and a description, marked `inParty`. */
 function serializePartyItem(item) {

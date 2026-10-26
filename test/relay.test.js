@@ -263,6 +263,12 @@ describe("compendium items", () => {
     assert.deepEqual((await act("searchItems", { kind: "spell", level: 0 })).data.results.map(r => r.name), ["Sacred Flame"]);
   });
 
+  test("item details leave the price out", async () => {
+    const { data } = await act("itemDetails", { uuid: "Compendium.dnd5e.items.Item.longsword" });
+    assert.ok(data.details.length, "has other details");
+    assert.ok(!data.details.some(d => d.label === "Price"));
+  });
+
   test("hidden compendiums and features can't be fetched or added", async () => {
     assert.equal((await act("itemDetails", { uuid: "Compendium.world.secret.Item.vorpal" })).status, 404);
     assert.equal((await act("addItem", { uuid: "Compendium.dnd5e.items.Item.feature" })).status, 400);

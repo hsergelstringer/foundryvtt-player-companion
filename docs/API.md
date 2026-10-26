@@ -152,7 +152,7 @@ Moved items arrive unequipped and unattuned. Consumables and loot stack onto a m
 | `items` | `{ weapons, equipment, consumables, tools, loot, features, spells }`; see [items](#items) |
 | `itemChanges` | `{ mode, requests }`; `mode` is `approve`, `direct` or `off`, and `requests` are this character's waiting and denied requests, each with `mine` when this user made it |
 | `trackers` | `{ character, party, canCreate }`, each tracker with its value and whether this user can change (`canEdit`) or delete it (`canDelete`) |
-| `party` | The character's party, or `null`: `{ id, name, img, canEdit, members, currency, items, log, addMode, requests }`. `addMode` is the item change mode for adding to the party (`off` when members can only look); `requests` are its waiting and denied requests, as in `itemChanges`. `members` are `{ id, name, img }`; `items` are `{ weapons, equipment, consumables, tools, loot }`, each `{ id, name, type, img, updated, hasDescription, quantity, summary, details, inParty: true }`, where `details` are only type, properties, rarity, attunement, weight and price (to hit, damage, saves and uses depend on a character, so they're left out); `log` is the 20 latest changes, newest first, as `{ id, at, user, actor, text }` (`text` like `"gave 5 × Arrows"`). |
+| `party` | The character's party, or `null`: `{ id, name, img, canEdit, members, currency, items, log, addMode, requests }`. `addMode` is the item change mode for adding to the party (`off` when members can only look); `requests` are its waiting and denied requests, as in `itemChanges`. `members` are `{ id, name, img }`; `items` are `{ weapons, equipment, consumables, tools, loot }`, each `{ id, name, type, img, updated, hasDescription, quantity, summary, details, inParty: true }`, where `details` are only type, properties, rarity, attunement and weight (to hit, damage, saves and uses depend on a character, so they're left out); `log` is the 20 latest changes, newest first, as `{ id, at, user, actor, text }` (`text` like `"gave 5 × Arrows"`). |
 
 ### Items
 
@@ -161,7 +161,7 @@ Moved items arrive unequipped and unattuned. Consumables and loot stack onto a m
 | `id`, `name`, `type`, `img` | |
 | `updated` | Changes whenever the item does; use it to cache descriptions |
 | `summary` | One line for a list, e.g. `"Action · 120 ft · V, S · Conc."` or `"1d8 + 2 Bludgeoning · +5 to hit"` |
-| `details` | `[{ label, value }]`: casting time or activation, range, target, components, duration, to hit, save, damage, armor, properties, mastery, requirements, rarity, attunement, weight, price. Only the ones that apply. |
+| `details` | `[{ label, value }]`: casting time or activation, range, target, components, duration, to hit, save, damage, armor, properties, mastery, requirements, rarity, attunement, weight. Only the ones that apply. |
 | `activities` | When an item has more than one: `[{ id, name, summary }]` |
 | `uses` | `{ value, max, recovery }` or `null` |
 | `activityUses` | Activities with their own uses: `[{ id, name, value, max, recovery }]` |

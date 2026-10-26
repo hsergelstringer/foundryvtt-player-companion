@@ -1555,10 +1555,16 @@ function trackersView(a) {
 /*  Combat                                      */
 /* -------------------------------------------- */
 
-/** Whether one of the user's combatants has the turn. */
+/**
+ * Whether a combatant is the character open in the app. Not the Foundry user's: a table often shares one
+ * player user that owns every character, with each phone on its own character.
+ */
+const isMine = c => !!c.actorId && c.actorId === state.actorId;
+
+/** Whether the open character has the turn. */
 function myTurn() {
   const combat = state.combat?.combat;
-  return !!combat?.currentId && combat.combatants.some(c => c.mine && c.id === combat.currentId);
+  return !!combat?.currentId && combat.combatants.some(c => isMine(c) && c.id === combat.currentId);
 }
 
 /** Foundry's initiative includes dnd5e's tiebreaker (dex / 100), so the whole part is what was rolled. */
@@ -1567,8 +1573,8 @@ const initiativeText = c => (c.initiative === null ? "–" : String(Math.floor(c
 function combatView() {
   const { combat, canSetInitiative } = state.combat;
   const list = combat.combatants;
-  const upNext = list.some(c => c.mine && c.id === combat.nextId);
-  const unrolled = canSetInitiative && list.some(c => c.mine && c.actorId && c.initiative === null);
+  const upNext = list.some(c => isMine(c) && c.id === combat.nextId);
+  const unrolled = canSetInitiative && list.some(c => isMine(c) && c.initiative === null);
   return [
     unrolled ? el("p", { class: "muted hint" }, "Roll initiative at the table, then tap the dash next to your character to enter it.") : null,
     el("section", { class: "group" },
@@ -1584,17 +1590,18 @@ function combatView() {
 function combatantRow(c, combat, canSetInitiative) {
   const now = c.id === combat.currentId;
   const tags = [
-    now ? (c.mine ? "Your turn" : "Their turn") : null,
+    now ? (isMine(c) ? "Your turn" : "Their turn") : null,
     c.id === combat.nextId ? "Up next" : null,
     c.defeated ? "Defeated" : null,
     c.hidden ? "Hidden from the others" : null
   ].filter(Boolean);
   const value = initiativeText(c);
-  const initiative = canSetInitiative && c.mine && c.actorId
+  // Only the open character's: the API allows any the user owns, but on a shared user that's everyone's.
+  const initiative = canSetInitiative && isMine(c)
     ? el("button", { class: "initiative editable", onclick: () => initiativeSheet(c), "aria-label": `${c.name}'s initiative: ${value}. Change it` }, value)
     : el("span", { class: "initiative" }, c.reminder ? "" : value);
   return el("li", {
-    class: ["turn", now && "now", c.mine && "mine", c.defeated && "defeated", c.reminder && "reminder"].filter(Boolean).join(" "),
+    class: ["turn", now && "now", isMine(c) && "mine", c.defeated && "defeated", c.reminder && "reminder"].filter(Boolean).join(" "),
     "aria-current": now ? "step" : null
   },
     initiative,
