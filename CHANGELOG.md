@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.16
 
 **Changed**
 - "Your turn", "You're up next", the dot on the Combat tab and entering initiative follow the character open in the app, not the Foundry user. A table sharing one player user no longer sees every character as theirs.
