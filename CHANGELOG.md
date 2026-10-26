@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.0.11
+## 0.0.12
 
 **Added**
 - Items can be added from compendiums straight to the party's inventory, with **Add item** on the Party view or on the group itself. It follows the *Adding and removing items* setting: with GM approval it waits as a request on the party, which only the player who asked can withdraw. Additions are logged, including approved ones.
