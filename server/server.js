@@ -378,6 +378,7 @@ async function sendImage(req, res, token, path) {
  * REST routes:
  *   GET  /api/health                      relay and Foundry status (no auth)
  *   GET  /api/me                          the token's user and their characters
+ *   GET  /api/combat                      the turn order of the combat on the GM's scene
  *   GET  /api/actors/:id                  a character sheet
  *   POST /api/actors/:id/:action          change something; JSON body holds parameters
  *   GET  /api/images/:path                an image from Foundry (only with FOUNDRY_URL)
@@ -398,6 +399,7 @@ async function handleApi(req, res, path) {
   let action, params = {};
   const parts = path.split("/").filter(Boolean); // ["api", ...]
   if (req.method === "GET" && parts.length === 2 && parts[1] === "me") action = "me";
+  else if (req.method === "GET" && parts.length === 2 && parts[1] === "combat") action = "combat";
   else if (req.method === "GET" && parts.length === 3 && parts[1] === "actors") {
     action = "getActor";
     params = { actorId: parts[2] };

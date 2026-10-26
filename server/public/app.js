@@ -21,6 +21,7 @@ const state = {
   error: null,
   foundry: true,
   imageOrigin: null, // image URLs starting with this come through the relay, see img()
+  combat: null, // { combat, canSetInitiative } from GET combat; combat is null when there's none
   open: new Set(), // expanded item rows
   spellFilter: "all",
   gearView: "character", // the Gear tab shows the character's inventory or the party's
@@ -182,6 +183,7 @@ const ICONS = {
   gear: '<path d="M8 8V6a4 4 0 0 1 8 0v2"/><path d="M5 8h14l-1 12.5H6Z"/><path d="M9.5 13h5"/>',
   features: '<circle cx="12" cy="9" r="5.5"/><path d="m8.5 13.5-1.5 8 5-2.5 5 2.5-1.5-8"/>',
   trackers: '<path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="m12 13 4-5"/><circle cx="12" cy="13" r="1.2"/>',
+  combat: '<path d="M4 4l10.5 10.5M4 4v4M4 4h4"/><path d="m12.5 16.5 4 4M16.5 12.5l4 4M14 19l5-5"/><path d="M20 4 9.5 14.5M20 4v4M20 4h-4"/><path d="m11.5 16.5-4 4M7.5 12.5l-4 4M10 19l-5-5"/>',
   more: '<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>',
   shield: '<path d="M12 3 19.5 6v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6Z"/>',
   star: '<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9Z"/>',
@@ -339,6 +341,7 @@ function connectEvents() {
       setImageOrigin(msg.imageOrigin);
       setFoundry(true);
       if (!state.me) loadMe().catch(handleError);
+      else loadCombat();
     }
     else if (msg.type === "foundry") {
       setFoundry(msg.connected);
@@ -346,9 +349,12 @@ function connectEvents() {
         retryFailedImages();
         setImageOrigin(msg.imageOrigin);
         refresh();
+        loadCombat();
       }
     }
     else if (msg.type === "error" && msg.status === 503) setFoundry(false);
+    // Initiative changes from this app come back here too; the order is only read, so reloading is harmless.
+    else if (msg.type === "combatChanged") loadCombat();
     // Our own changes come back as events too; the queue already has the answer.
     else if (pending) return;
     else if (msg.type === "actorChanged" && (msg.actorId === state.actorId || msg.actorId === state.actor?.party?.id
@@ -379,6 +385,17 @@ function setFoundry(connected) {
   banner(connected ? null : "Foundry is offline. Changes will work again once the GM is logged in.");
 }
 
+/** The combat's turn order. Quiet on failure: the tab just isn't shown (an older module answers 404). */
+async function loadCombat() {
+  if (!state.token) return;
+  try { state.combat = await api("GET", "combat"); }
+  catch (err) {
+    if (err.status === 401) return handleError(err);
+    state.combat = null;
+  }
+  if (state.me) render();
+}
+
 async function refresh() {
   if (!state.actorId) return;
   try {
@@ -404,7 +421,7 @@ async function signIn(token) {
   try {
     await loadMe();
     storage.set(TOKEN_KEY, state.token);
-    connectEvents();
+    connectEvents(); // its "ready" loads the combat
   }
   catch (err) {
     if (err.status === 503 || err.status === 504) {
@@ -423,7 +440,7 @@ async function signIn(token) {
 
 function signOut(message) {
   closeSheet?.(null);
-  state.token = state.me = state.actor = state.actorId = null;
+  state.token = state.me = state.actor = state.actorId = state.combat = null;
   state.error = message ?? null;
   forgetImages();
   storage.set(TOKEN_KEY, null);
@@ -520,6 +537,7 @@ function pickerView() {
 
 const TABS = [
   { key: "stats", label: "Stats", icon: "stats" },
+  { key: "combat", label: "Combat", icon: "combat" },
   { key: "spells", label: "Spells", icon: "spells" },
   { key: "inventory", label: "Gear", icon: "gear" },
   { key: "features", label: "Features", icon: "features" },
@@ -530,6 +548,7 @@ function availableTabs(a) {
   return TABS.filter(t => {
     if (t.key === "spells") return a.items.spells.length || a.spellSlots.length || a.spellcasting.ability || a.spellcasting.classes?.length;
     if (t.key === "trackers") return hasTrackers(a);
+    if (t.key === "combat") return !!state.combat?.combat;
     return true;
   });
 }
@@ -561,10 +580,11 @@ function groupView(a) {
 function sheetView(a) {
   if (a.type === "group") return groupView(a);
   const tabs = availableTabs(a);
-  if (!tabs.some(t => t.key === state.tab)) state.tab = "stats";
+  // The chosen tab may not exist yet (the combat is still loading) or any more; keep the choice for when it does.
+  const tab = tabs.some(t => t.key === state.tab) ? state.tab : "stats";
   const classes = a.classes.map(c => `${c.name}${c.subclass ? ` (${c.subclass})` : ""} ${c.levels}`).join(" / ");
   // The party's inventory is the party's, so it gets the party's header and none of the character's vitals.
-  const party = state.tab === "inventory" && showingParty(a) ? a.party : null;
+  const party = tab === "inventory" && showingParty(a) ? a.party : null;
   const subtitle = party
     ? sharedBy(party)
     : [classes || (a.level ? `Level ${a.level}` : ""), a.species].filter(Boolean).join(" · ");
@@ -577,12 +597,13 @@ function sheetView(a) {
       spells: () => spellsView(a),
       inventory: () => inventoryView(a),
       features: () => featuresView(a),
-      trackers: () => trackersView(a)
-    }[state.tab]()),
+      trackers: () => trackersView(a),
+      combat: () => combatView()
+    }[tab]()),
     el("nav", { class: "tabbar", "aria-label": "Sections" }, tabs.map(t =>
       el("button", {
-        class: state.tab === t.key ? "active" : "",
-        "aria-current": state.tab === t.key ? "page" : null,
+        class: [tab === t.key ? "active" : "", t.key === "combat" && myTurn() ? "alert" : ""].filter(Boolean).join(" "),
+        "aria-current": tab === t.key ? "page" : null,
         onclick: () => setTab(t.key)
       }, icon(t.icon), el("span", {}, t.label)))));
 }
@@ -1528,6 +1549,90 @@ function trackersView(a) {
       el("h2", {}, "Party"),
       el("ul", { class: "trackers" }, party.map(trackerCard))) : null
   ];
+}
+
+/* -------------------------------------------- */
+/*  Combat                                      */
+/* -------------------------------------------- */
+
+/** Whether one of the user's combatants has the turn. */
+function myTurn() {
+  const combat = state.combat?.combat;
+  return !!combat?.currentId && combat.combatants.some(c => c.mine && c.id === combat.currentId);
+}
+
+/** Foundry's initiative includes dnd5e's tiebreaker (dex / 100), so the whole part is what was rolled. */
+const initiativeText = c => (c.initiative === null ? "–" : String(Math.floor(c.initiative)));
+
+function combatView() {
+  const { combat, canSetInitiative } = state.combat;
+  const list = combat.combatants;
+  const upNext = list.some(c => c.mine && c.id === combat.nextId);
+  const unrolled = canSetInitiative && list.some(c => c.mine && c.actorId && c.initiative === null);
+  return [
+    unrolled ? el("p", { class: "muted hint" }, "Roll initiative at the table, then tap the dash next to your character to enter it.") : null,
+    el("section", { class: "group" },
+      el("header", { class: "level-head" },
+        el("h2", {}, combat.started ? `Round ${combat.round}` : "Not started yet"),
+        myTurn() ? el("span", { class: "chip now" }, "Your turn") : upNext ? el("span", { class: "chip" }, "You're up next") : null),
+      list.length
+        ? el("ol", { class: "turn-order card" }, list.map(c => combatantRow(c, combat, canSetInitiative)))
+        : el("p", { class: "muted empty" }, "No one has joined the combat yet."))
+  ];
+}
+
+function combatantRow(c, combat, canSetInitiative) {
+  const now = c.id === combat.currentId;
+  const tags = [
+    now ? (c.mine ? "Your turn" : "Their turn") : null,
+    c.id === combat.nextId ? "Up next" : null,
+    c.defeated ? "Defeated" : null,
+    c.hidden ? "Hidden from the others" : null
+  ].filter(Boolean);
+  const value = initiativeText(c);
+  const initiative = canSetInitiative && c.mine && c.actorId
+    ? el("button", { class: "initiative editable", onclick: () => initiativeSheet(c), "aria-label": `${c.name}'s initiative: ${value}. Change it` }, value)
+    : el("span", { class: "initiative" }, c.reminder ? "" : value);
+  return el("li", {
+    class: ["turn", now && "now", c.mine && "mine", c.defeated && "defeated", c.reminder && "reminder"].filter(Boolean).join(" "),
+    "aria-current": now ? "step" : null
+  },
+    initiative,
+    avatar(c.img, c.name, "small"),
+    el("span", { class: "turn-name" },
+      el("strong", {}, c.name),
+      tags.length ? el("small", { class: "muted" }, tags.join(" · ")) : null));
+}
+
+function initiativeSheet(c) {
+  const amount = el("input", {
+    type: "text", inputmode: "numeric", pattern: "-?[0-9]*", autocomplete: "off", placeholder: "0",
+    class: "hp-input", autofocus: true, "aria-label": "Initiative",
+    value: c.initiative === null ? null : String(Math.floor(c.initiative))
+  });
+  const save = async close => {
+    const n = Number(amount.value.trim());
+    if (!amount.value.trim() || !Number.isInteger(n)) {
+      toast("Enter the whole number you rolled", "error");
+      amount.focus();
+      return;
+    }
+    close();
+    try {
+      state.combat = await api("POST", `actors/${c.actorId}/initiative`, { combatantId: c.id, value: n });
+      render();
+    }
+    catch (err) { handleError(err); }
+  };
+  openSheet(`${c.name}'s initiative`, close => el("form", {
+    class: "sheet-body hp-sheet",
+    onsubmit: e => { e.preventDefault(); save(close); }
+  },
+    amount,
+    el("p", { class: "muted hint" }, "What you rolled, with your initiative bonus added."),
+    el("div", { class: "button-row" },
+      el("button", { type: "button", onclick: () => close() }, "Cancel"),
+      el("button", { type: "submit", class: "primary" }, "Save"))));
 }
 
 /* -------------------------------------------- */

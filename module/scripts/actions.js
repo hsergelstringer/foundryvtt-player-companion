@@ -6,6 +6,7 @@
  * Written against dnd5e 4.x to 6.x; older data shapes are handled where cheap.
  */
 
+import * as Combat from "./combat.js";
 import { RelayError } from "./errors.js";
 import * as Items from "./items.js";
 import * as Party from "./party.js";
@@ -371,6 +372,44 @@ export function serializeActor(actor, user) {
 /*  Actions                                     */
 /* -------------------------------------------- */
 
+/**
+ * The combat as the user sees it, or { combat: null } when there's none (or the setting is off).
+ * Initiative is Foundry's value, tiebreaker included; apps show its whole part.
+ */
+export function serializeCombat(user) {
+  const combat = Combat.currentCombat();
+  const canSetInitiative = Combat.combatMode() === "edit";
+  if (!combat) return { combat: null, canSetInitiative };
+  const current = combat.started ? combat.combatant : null;
+  const next = Combat.nextCombatant(combat, user);
+  return {
+    canSetInitiative,
+    combat: {
+      id: combat.id,
+      round: num(combat.round),
+      started: !!combat.started,
+      // A hidden combatant's turn isn't shown, as in Foundry.
+      currentId: current && Combat.visibleTo(current, user) ? current.id : null,
+      nextId: next?.id ?? null,
+      combatants: (combat.turns ?? []).filter(c => Combat.visibleTo(c, user)).map(c => {
+        const mine = Combat.ownsCombatant(c, user);
+        return {
+          id: c.id,
+          name: c.name,
+          img: imageUrl(c.img ?? c.token?.texture?.src ?? c.actor?.img),
+          initiative: Number.isFinite(c.initiative) ? c.initiative : null,
+          defeated: Combat.isDefeated(c),
+          hidden: !!c.hidden,
+          reminder: !c.actor,
+          mine,
+          // Only for the user's own, to set their initiative.
+          actorId: mine ? c.actorId : null
+        };
+      })
+    }
+  };
+}
+
 export function listCharacters(user) {
   return game.actors
     .filter(a => a.testUserPermission(user, OWNER) && (user.isGM ? a.hasPlayerOwner : true))
@@ -393,6 +432,18 @@ export const ACTIONS = {
 
   getActor(user, { actorId }) {
     return serializeActor(ownedActor(user, actorId), user);
+  },
+
+  /** The combat on the scene the GM is viewing, as the user would see it in Foundry. */
+  combat(user) {
+    return serializeCombat(user);
+  },
+
+  /** Body: { combatantId, value }, the initiative rolled at the table for one of the character's combatants. Returns the combat. */
+  async initiative(user, { actorId, combatantId, value }) {
+    const actor = ownedActor(user, actorId);
+    await Combat.setInitiative(user, actor, combatantId, requireInt(value, "value", { min: -99, max: 999 }));
+    return serializeCombat(user);
   },
 
   /** Body: { value?, temp? } to set, or { damage } / { heal } to apply. */

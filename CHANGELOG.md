@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+**Added**
+- A **Combat** tab in the web app while a combat is set up: the turn order of the combat on the scene the GM is viewing, as players see it in Foundry (hidden combatants left out, no one else's hit points), with whose turn it is, who's up next, and a dot on the tab on your turn. Players enter the initiative they rolled at the table for their own characters. A new world setting, *Combat tracker in the web app*, chooses between entering initiative, view only, or off.
+
+**API**
+- New `GET /api/combat`, the `initiative` action, and the `combatChanged` event.
+
+## 0.0.14
+
+**Fixed**
+- Image proxy hardening: one token check per token for a whole sheet of images, revoked tokens can't keep using a check that was in progress, images are streamed instead of held in memory, responses always revalidate, and a `FOUNDRY_URL` with a path is refused at startup. The app retries images that failed.
+
 ## 0.0.13
 
 **Added**

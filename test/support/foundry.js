@@ -184,6 +184,46 @@ export class User {
   }
 }
 
+/** A combatant: an actor's token in a combat, or (with no actor) a marker like the Heroic Tracker's. */
+export class Combatant {
+  constructor(data, combat) {
+    Object.assign(this, { initiative: null, hidden: false, defeated: false, img: null, actorId: null }, data);
+    this.id ??= randomID();
+    this.parent = combat;
+  }
+  get actor() { return this.actorId ? game.actors.get(this.actorId) ?? null : null; }
+  get isDefeated() { return this.defeated; }
+
+  async update(changes) {
+    for (const [path, value] of Object.entries(changes)) setPath(this, path, value);
+    Hooks.callAll("updateCombatant", this, changes);
+    return this;
+  }
+}
+
+/** Foundry's Combat: turns sorted by initiative, highest first, unrolled last. */
+export class Combat {
+  constructor({ combatants = [], ...data } = {}) {
+    Object.assign(this, { id: randomID(), round: 0, turn: 0, started: false }, data);
+    this.combatants = new Collection(combatants.map(c => new Combatant(c, this)).map(c => [c.id, c]));
+  }
+  get turns() {
+    return [...this.combatants.values()].sort((a, b) =>
+      (b.initiative ?? -Infinity) - (a.initiative ?? -Infinity) || a.name.localeCompare(b.name));
+  }
+  get combatant() { return this.turns[this.turn] ?? null; }
+
+  async setInitiative(id, value) {
+    await this.combatants.get(id).update({ initiative: value });
+  }
+
+  async update(changes) {
+    for (const [path, value] of Object.entries(changes)) setPath(this, path, value);
+    Hooks.callAll("updateCombat", this, changes);
+    return this;
+  }
+}
+
 /* -------------------------------------------- */
 /*  Settings, packs, chat                       */
 /* -------------------------------------------- */
@@ -415,7 +455,7 @@ export function installFoundry({ relayUrl = "", relaySecret = "" } = {}) {
   } };
 
   globalThis.game = {
-    user: gm, users, settings, world: { id: "test", title: "Test World" }, system: { id: "dnd5e" },
+    user: gm, users, settings, world: { id: "test", title: "Test World" }, system: { id: "dnd5e" }, combat: null,
     actors: world.actors, messages: world.messages,
     packs: Object.assign(new Collection(world.packs.map(p => [p.collection, p])), { filter: fn => world.packs.filter(fn) }),
     items: { fromCompendium: doc => {

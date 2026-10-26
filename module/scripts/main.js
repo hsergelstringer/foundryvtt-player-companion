@@ -6,12 +6,13 @@
  *  - Relay: the GM browser's WebSocket to the relay server. Requests arrive
  *    here, are checked against a token, and run as ACTIONS (actions.js).
  *  - Change notifications: Foundry hooks that tell the relay which users'
- *    characters changed, so their apps refresh.
+ *    characters changed, so their apps refresh. Combat changes go to everyone.
  *  - RelaySettings: the settings window for connecting and managing tokens.
  *
  * See docs/DEVELOPMENT.md for how the pieces fit together.
  */
 import { ACTIONS, RelayError } from "./actions.js";
+import { registerCombatSettings, setupCombat } from "./combat.js";
 import { registerItemSettings, setupItems } from "./items.js";
 import { membersOf, registerPartySettings, setupParty } from "./party.js";
 import { sha256Hex } from "./sha256.js";
@@ -248,9 +249,16 @@ Hooks.on(`${MODULE_ID}.partyChanged`, () => {
   Relay.send({ type: "event", userIds: game.users.map(u => u.id), payload: { type: "partyChanged" } });
 });
 
+// The combat changed, or which combat the GM is viewing. Everyone can see the order, so everyone hears.
+Hooks.on(`${MODULE_ID}.combatChanged`, () => {
+  if (Relay.status !== "connected") return;
+  Relay.send({ type: "event", userIds: game.users.map(u => u.id), payload: { type: "combatChanged" } });
+});
+
 setupTrackers();
 setupItems();
 setupParty();
+setupCombat();
 
 Hooks.on("updateUser", (user, changes) => {
   if (!foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) return;
@@ -372,6 +380,7 @@ Hooks.once("init", () => {
   registerTrackerSettings();
   registerItemSettings();
   registerPartySettings();
+  registerCombatSettings();
 
   game.settings.registerMenu(MODULE_ID, "menu", {
     name: "Player Companion",

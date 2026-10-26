@@ -51,6 +51,7 @@ Errors are `{ "error": "message" }` with one of these statuses:
 | GET | `/api/health` | | `{ relay, foundry, world, images }`; no token needed. `images` is whether the relay serves Foundry's images |
 | GET | `/api/me` | | `{ user, world, characters }` |
 | GET | `/api/actors/:id` | | The [sheet](#the-sheet) |
+| GET | `/api/combat` | | The [combat](#combat) on the scene the GM is viewing |
 | POST | `/api/actors/:id/<action>` | See below | Usually the updated sheet |
 | GET | `/api/images/<path>` | | One of Foundry's images, when the relay has `FOUNDRY_URL` (see [Images](#images)) |
 
@@ -73,6 +74,7 @@ Each action is `POST /api/actors/:id/<action>`. Unless noted, it returns the upd
 | `inspiration` | `{ "value": true }` | Heroic Inspiration |
 | `exhaustion` | `{ "value": 2 }` | 0 to the sheet's `exhaustionMax` |
 | `rest` | `{ "type": "short" }` or `{ "type": "long" }` | No dialog; hit dice aren't spent automatically |
+| `initiative` | `{ "combatantId": "…", "value": 17 }` | The initiative rolled at the table, a whole number, for one of the character's own combatants (dnd5e's dexterity tiebreaker is added if it's on). Returns the [combat](#combat). `403` when the GM enters initiative, `404` if the combatant isn't the character's. |
 | `hitDice` | `{ "classId": "…", "value": 3 }` | Hit dice remaining for that class |
 
 **Spells and items**
@@ -171,6 +173,17 @@ Moved items arrive unequipped and unattuned. Consumables and loot stack onto a m
 
 All labels come from dnd5e, so they're in the world's language.
 
+### Combat
+
+`GET /api/combat` returns `{ canSetInitiative, combat }`. `combat` is `null` when there's no combat on the GM's scene, or the GM has turned the tracker off; `canSetInitiative` says whether the `initiative` action is allowed.
+
+| Field | Meaning |
+| --- | --- |
+| `id`, `round`, `started` | |
+| `currentId` | Whose turn it is, or `null` before the combat starts or while it's a combatant hidden from this user |
+| `nextId` | The next combatant after the current one who gets a turn and that the user can see, skipping defeated ones and reminders |
+| `combatants` | In turn order, as Foundry's tracker shows them to the user (hidden ones only if they own them): `{ id, name, img, initiative, defeated, hidden, reminder, mine, actorId }`. `initiative` is `null` until rolled, and includes dnd5e's tiebreaker as a fraction, so show its whole part. `reminder` is a combatant with no actor, like an effect marker. `actorId` is only given for the user's own (`mine`), for `initiative`. No hit points. |
+
 ### Descriptions
 
 Sheets leave descriptions out, because every change returns the whole sheet. Fetch one with `itemDescription`, and cache it by `id` and `updated`.
@@ -204,6 +217,7 @@ You'll receive:
 | `{ "type": "partyChanged" }` | The party inventory setting changed |
 | `{ "type": "trackersChanged" }` | Party trackers or tracker templates changed |
 | `{ "type": "requestsChanged" }` | Item requests or the item setting changed |
+| `{ "type": "combatChanged" }` | The combat changed (turns, combatants, initiative), the GM looked at another scene, or the combat setting changed; fetch `/api/combat` again |
 | `{ "type": "foundry", "connected": false }` | The GM's browser disconnected (and `true` when it's back, with `imageOrigin`) |
 
 Changes you make yourself also come back as events. The socket closes with code `4001` if the token is revoked.

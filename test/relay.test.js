@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
-import { installFoundry, startFoundry } from "./support/foundry.js";
+import { Combat, installFoundry, startFoundry } from "./support/foundry.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SECRET = "test-secret-0123456789";
@@ -572,6 +572,135 @@ describe("party inventory", () => {
     await world.party.update({ "system.currency.cp": 7 });
     await waitFor(() => messages.some(m => m.type === "actorChanged" && m.actorId === "party"), "actorChanged");
     assert.deepEqual(messages.find(m => m.actorId === "party").memberIds, ["isen"]);
+    socket.close();
+  });
+});
+
+describe("combat", () => {
+  const combat = () => call("GET", "combat");
+  const setInit = (body, actorId = "isen", token) => call("POST", `actors/${actorId}/initiative`, body, token);
+  const setMode = mode => game.settings.set("player-companion", "combatTracker", mode);
+
+  /** Isen (Ursula's), Brann (Other's), a hidden ambusher and an ogre (Other's, standing in for NPCs), and a marker. */
+  function fight(data = {}) {
+    game.combat = new Combat({
+      round: 2, turn: 0, started: true, ...data,
+      combatants: [
+        { id: "c-isen", name: "Isen Frostborn", actorId: "isen", initiative: 15.16 },
+        { id: "c-brann", name: "Brann", actorId: "brann", initiative: 12 },
+        { id: "c-ambush", name: "Ambusher", actorId: "brann", initiative: 20, hidden: true },
+        { id: "c-bless", name: "Bless ends", initiative: 14.99, img: "icons/svg/clockwork.svg" },
+        { id: "c-ogre", name: "Ogre", actorId: "brann", initiative: null }
+      ]
+    });
+    return game.combat;
+  }
+
+  after(() => { game.combat = null; });
+
+  test("no combat answers combat: null", async () => {
+    game.combat = null;
+    assert.deepEqual((await combat()).data, { combat: null, canSetInitiative: true });
+  });
+
+  test("shows the order as Foundry shows it to the player, without others' details", async () => {
+    fight();
+    const { data } = await combat();
+    assert.equal(data.combat.round, 2);
+    assert.deepEqual(data.combat.combatants.map(c => c.id), ["c-isen", "c-bless", "c-brann", "c-ogre"], "the hidden ambusher is left out");
+    const [isen, bless, brann, ogre] = data.combat.combatants;
+    assert.deepEqual([isen.mine, isen.actorId, brann.mine, brann.actorId], [true, "isen", false, null]);
+    assert.equal(bless.reminder, true);
+    assert.equal(bless.img, "https://foundry.test/icons/svg/clockwork.svg");
+    assert.equal(ogre.initiative, null);
+    assert.ok(!JSON.stringify(data).includes("hp"), "no hit points");
+  });
+
+  test("a hidden combatant's turn isn't shown, but up next is", async () => {
+    fight({ turn: 0 }); // the ambusher, highest initiative
+    const { data } = await combat();
+    assert.equal(data.combat.currentId, null);
+    assert.equal(data.combat.nextId, "c-isen");
+  });
+
+  test("the owner sees their hidden combatant", async () => {
+    fight();
+    const { data } = await call("GET", "combat", null, tokens.other);
+    const ambusher = data.combat.combatants.find(c => c.id === "c-ambush");
+    assert.deepEqual([ambusher?.hidden, ambusher?.mine], [true, true]);
+  });
+
+  test("up next skips reminders and the defeated", async () => {
+    const c = fight({ turn: 1 }); // Isen
+    c.combatants.get("c-brann").defeated = true;
+    const { data } = await combat();
+    assert.equal(data.combat.currentId, "c-isen");
+    assert.equal(data.combat.nextId, "c-ogre");
+    assert.equal(data.combat.combatants.find(x => x.id === "c-brann").defeated, true);
+  });
+
+  test("before it starts there's no current turn", async () => {
+    fight({ started: false, round: 0 });
+    const { data } = await combat();
+    assert.deepEqual([data.combat.started, data.combat.currentId, data.combat.nextId], [false, null, null]);
+  });
+
+  test("a player enters their initiative, and the order follows", async () => {
+    const c = fight();
+    const { status, data } = await setInit({ combatantId: "c-isen", value: 22 });
+    assert.equal(status, 200);
+    assert.equal(c.combatants.get("c-isen").initiative, 22);
+    assert.equal(data.combat.combatants[0].id, "c-isen");
+  });
+
+  test("dnd5e's dexterity tiebreaker is added", async () => {
+    const c = fight();
+    game.settings.values.set("initiativeDexTiebreaker", true);
+    try {
+      await setInit({ combatantId: "c-isen", value: 11 });
+      assert.equal(c.combatants.get("c-isen").initiative, 11.16);
+    }
+    finally { game.settings.values.delete("initiativeDexTiebreaker"); }
+  });
+
+  test("only for your own combatants", async () => {
+    const c = fight();
+    assert.equal((await setInit({ combatantId: "c-brann", value: 1 })).status, 404, "your character, someone else's combatant");
+    assert.equal((await setInit({ combatantId: "c-brann", value: 1 }, "brann")).status, 404, "someone else's character");
+    assert.equal((await setInit({ combatantId: "nope", value: 1 })).status, 404);
+    assert.equal(c.combatants.get("c-brann").initiative, 12);
+  });
+
+  test("bad values are refused", async () => {
+    fight();
+    assert.equal((await setInit({ combatantId: "c-isen", value: "high" })).status, 400);
+    assert.equal((await setInit({ combatantId: "c-isen", value: 4.5 })).status, 400);
+  });
+
+  test("view only, and off", async () => {
+    const c = fight();
+    try {
+      await setMode("view");
+      assert.equal((await combat()).data.canSetInitiative, false);
+      assert.equal((await setInit({ combatantId: "c-isen", value: 3 })).status, 403);
+      await setMode("off");
+      assert.equal((await combat()).data.combat, null);
+      assert.equal((await setInit({ combatantId: "c-isen", value: 3 })).status, 403);
+      assert.equal(c.combatants.get("c-isen").initiative, 15.16);
+    }
+    finally { await setMode("edit"); }
+  });
+
+  test("changes reach every player's event stream", async () => {
+    const c = fight();
+    const socket = new WebSocket(`${base.replace("http", "ws")}/api/events`);
+    const messages = [];
+    socket.addEventListener("message", e => messages.push(JSON.parse(e.data)));
+    await new Promise(resolve => socket.addEventListener("open", resolve));
+    socket.send(JSON.stringify({ type: "auth", token: tokens.other }));
+    await waitFor(() => messages.some(m => m.type === "ready"), "ready");
+    await c.update({ turn: 2 });
+    await waitFor(() => messages.some(m => m.type === "combatChanged"), "combatChanged");
     socket.close();
   });
 });

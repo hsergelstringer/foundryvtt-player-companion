@@ -18,6 +18,7 @@ Foundry modules run in the browser and can't accept connections, so the module i
 - **Descriptions** read as they do in Foundry: dice formulas filled in from the character, links and rules references as names, tables and lists kept.
 - **Rests**, hit dice, death saves, exhaustion and Heroic Inspiration.
 - **Party inventory:** see the party's shared items and coin, give items and coin to the party and take them out, with a log of who did what.
+- **Combat:** the turn order of the current combat, with whose turn it is and who's up next, and enter the initiative they rolled at the table.
 - **Custom trackers** for anything the sheet doesn't cover.
 - **Add items and spells from compendiums**, and remove them, with the GM's approval if the GM wants it.
 
@@ -78,6 +79,7 @@ All in **Configure Settings → Player Companion**.
 | Setting | Scope | What it does |
 | --- | --- | --- |
 | Adding and removing items in the web app | World | **The GM approves each change** (default), **Players change items directly**, or **Off** |
+| Combat tracker in the web app | World | **Players see the order and enter their initiative** (default), **Players only see the order**, or **Off** |
 | Party inventory in the web app | World | **Members give and take items and coin** (default), **Members can only look**, or **Off** |
 | Players can create trackers | World | Lets players add and remove their own trackers |
 | Show party trackers on the canvas | Each person | A small panel listing the party trackers |
@@ -107,6 +109,12 @@ In the web app, the Gear tab gets a **Character / Party** switch for every membe
 If you give players ownership of the Group, it also appears in their character list. Opened there, it shows only the party's gear and money; taking and moving coin happen from a character.
 
 Moved items arrive unequipped and unattuned. Consumables and loot stack onto a matching item; giving a container gives its contents too. A character in more than one group uses the primary party, or else the first group by name. Spells, features and anything else that isn't a physical item stay on the character.
+
+## Combat
+
+While a combat is set up, the web app shows a **Combat** tab with the turn order of the combat on the scene the GM is viewing. Players see what Foundry's own tracker shows them: hidden combatants are left out (except their own), nobody else's hit points are shown, and a hidden combatant's turn isn't marked. The tab gets a dot when it's one of the player's characters' turn, and "You're up next" shows a turn ahead. Defeated combatants are struck through, and effect reminders from other modules (like the Heroic Tracker's markers) show in their place in the order.
+
+Players roll initiative at the table, then tap the dash next to their character and enter the total. It goes straight into Foundry, re-sorting the order; with dnd5e's dexterity tiebreaker on, the tiebreaker is added as dnd5e would. They can only enter it for their own characters, and the *Combat tracker in the web app* setting can limit them to looking, or turn the tab off.
 
 ## Trackers
 
