@@ -245,11 +245,19 @@ async function closeCards(request, outcome) {
   }
 }
 
+/** Announce an item added from the web app, now or on approval, so the party log can record it (see party.js). */
+function added(actor, request) {
+  Hooks.callAll(`${MODULE_ID}.itemAdded`, actor, {
+    userName: request.userName, viaName: request.viaName ?? null, name: request.name, quantity: request.quantity
+  });
+}
+
 /**
  * Queue a change for the GM, or make it now if the GM allows direct changes.
  * @param {User} user
  * @param {Actor} actor
- * @param {{ kind: "add", source: Item, quantity?: number } | { kind: "remove", item: Item }} change
+ * @param {{ kind: "add", source: Item, quantity?: number, via?: Actor } | { kind: "remove", item: Item }} change
+ *   `via` is the character a party add was made from, for the party's log.
  * @returns {Promise<string>}  What happened, to show the player
  */
 export async function requestChange(user, actor, change) {
@@ -272,6 +280,7 @@ export async function requestChange(user, actor, change) {
     img: subject.img,
     type: subject.type,
     quantity,
+    viaName: change.via?.name ?? null,
     created: Date.now()
   };
 
@@ -279,7 +288,9 @@ export async function requestChange(user, actor, change) {
     let result;
     if (change.kind === "add") {
       const { stacked } = await addToActor(actor, change.source, { quantity });
-      result = stacked ? `Added to your existing ${subject.name}` : `Added ${subject.name}`;
+      added(actor, request);
+      if (change.via) result = `Added ${subject.name} to ${actor.name}`;
+      else result = stacked ? `Added to your existing ${subject.name}` : `Added ${subject.name}`;
     }
     else {
       await removeFromActor(change.item);
@@ -327,6 +338,7 @@ async function resolve(requestId, approve) {
         const source = await foundry.utils.fromUuid(request.uuid);
         if (!source) throw new Error(`${request.name} is no longer in its compendium`);
         await addToActor(actor, source, { quantity: request.quantity });
+        added(actor, request);
       }
       else {
         const item = actor.items.get(request.itemId);
@@ -349,11 +361,14 @@ async function resolve(requestId, approve) {
   await closeCards(request, outcome);
 }
 
-/** The player withdraws a pending request or dismisses a denied one. */
-export async function cancelRequest(actor, requestId) {
+/**
+ * The player withdraws a pending request or dismisses a denied one.
+ * @param {string} [userId]  Only this user's requests, e.g. on a party several players share.
+ */
+export async function cancelRequest(actor, requestId, userId = null) {
   const request = await withRequests(async () => {
     const list = requests();
-    const found = list.find(r => r.id === requestId && r.actorId === actor.id);
+    const found = list.find(r => r.id === requestId && r.actorId === actor.id && (!userId || r.userId === userId));
     if (!found) throw new RelayError(404, "Request not found");
     await saveRequests(list.filter(r => r.id !== requestId));
     return found;

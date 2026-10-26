@@ -74,7 +74,7 @@ export function membersOf(group) {
 }
 
 /** @param {object} [options]  `edit` to change the party; `move` to move things between it and a character. */
-function requireParty(actor, { edit = false, move = false } = {}) {
+export function requireParty(actor, { edit = false, move = false } = {}) {
   const party = partyOf(actor);
   // Same answer for "no party" and "the setting is off".
   if (!party) throw new RelayError(404, `${actor.name} isn't in a party`);
@@ -93,12 +93,14 @@ export function partyItem(actor, itemId) {
 
 export const partyLog = group => group.getFlag(MODULE_ID, LOG_FLAG) ?? [];
 
-async function log(group, user, actor, text) {
-  // Changes made on the group itself are credited to the player rather than the group.
-  const who = actor === group ? user.name : actor.name;
-  const entry = { id: foundry.utils.randomID(), at: Date.now(), user: user.name, actor: who, text };
+/** Add a log entry. `actorName` is the character it was done from, or null when done on the group itself. */
+async function addLog(group, userName, actorName, text) {
+  const entry = { id: foundry.utils.randomID(), at: Date.now(), user: userName, actor: actorName ?? userName, text };
   await group.setFlag(MODULE_ID, LOG_FLAG, [entry, ...partyLog(group)].slice(0, LOG_SIZE));
 }
+
+// Changes made on the group itself are credited to the player rather than the group.
+const log = (group, user, actor, text) => addLog(group, user.name, actor === group ? null : actor.name, text);
 
 /* -------------------------------------------- */
 /*  Moving items                                */
@@ -251,6 +253,15 @@ export function setCoins(user, actor, coins) {
 /* -------------------------------------------- */
 /*  Setup                                       */
 /* -------------------------------------------- */
+
+/** Log compendium items added to a party (items.js), whether added at once or approved later by a GM. */
+export function setupParty() {
+  Hooks.on(`${MODULE_ID}.itemAdded`, (actor, { userName, viaName, name, quantity }) => {
+    if (actor.type !== "group") return;
+    withParty(() => addLog(actor, userName, viaName, `added ${quantity > 1 ? `${quantity} × ${name}` : name}`))
+      .catch(err => console.warn(`${MODULE_ID} | Couldn't log an item added to ${actor.name}`, err));
+  });
+}
 
 export function registerPartySettings() {
   game.settings.register(MODULE_ID, "partyInventory", {

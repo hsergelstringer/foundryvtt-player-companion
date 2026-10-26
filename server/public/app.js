@@ -382,6 +382,7 @@ async function selectActor(id) {
   state.actor = null;
   state.adder = null;
   state.open.clear();
+  for (const key of Object.keys(filters)) filters[key] = "";
   descriptions.clear();
   storage.set(ACTOR_KEY, id);
   if (id) await refresh();
@@ -889,7 +890,11 @@ function removeButton(item) {
 
 /** Pending and denied requests for one tab ("spell" or "item"). */
 function requestsView(a, kind) {
-  const list = (a.itemChanges?.requests ?? []).filter(r => (r.type === "spell") === (kind === "spell"));
+  return requestList((a.itemChanges?.requests ?? []).filter(r => (r.type === "spell") === (kind === "spell")));
+}
+
+/** Requests, each with Withdraw or Dismiss. On a party, players only withdraw their own. */
+function requestList(list, { party = false } = {}) {
   if (!list.length) return null;
   return el("section", { class: "group" },
     el("h2", {}, "Requests"),
@@ -901,10 +906,11 @@ function requestsView(a, kind) {
             el("span", { class: "item-title" },
               `${r.kind === "add" ? "Add" : "Remove"} ${r.name}${r.quantity > 1 ? ` ×${r.quantity}` : ""}`,
               el("small", { class: r.status === "pending" ? "muted" : "error" },
-                r.status === "pending" ? "Waiting for the GM" : r.reason ? `Couldn't be done: ${r.reason}` : "The GM said no"))),
-          el("div", { class: "item-quick" },
-            el("button", { class: "ghost small", onclick: () => act("cancelItemRequest", { requestId: r.id }) },
-              r.status === "pending" ? "Withdraw" : "Dismiss")))))));
+                [party && !r.mine ? `${r.userName}: ` : "",
+                  r.status === "pending" ? "Waiting for the GM" : r.reason ? `Couldn't be done: ${r.reason}` : "The GM said no"].join("")))),
+          !party || r.mine ? el("div", { class: "item-quick" },
+            el("button", { class: "ghost small", onclick: () => act("cancelItemRequest", { requestId: r.id, ...(party ? { toParty: true } : {}) }) },
+              r.status === "pending" ? "Withdraw" : "Dismiss")) : null)))));
 }
 
 function addButton(kind) {
@@ -916,8 +922,9 @@ function addButton(kind) {
 const ITEM_TYPE_FILTERS = [["", "All types"], ["weapon", "Weapons"], ["equipment", "Equipment"], ["consumable", "Consumables"],
   ["tool", "Tools"], ["loot", "Loot"], ["container", "Containers"]];
 
-function openAdder(kind) {
-  state.adder = { kind, query: "", pack: "", type: "", level: "", results: null, total: 0, packs: [], loading: false, open: null, details: {}, seq: 0 };
+/** The compendium search. `target` is "character", or "party" to add to the party's inventory. */
+function openAdder(kind, target = "character") {
+  state.adder = { kind, target, query: "", pack: "", type: "", level: "", results: null, total: 0, packs: [], loading: false, open: null, details: {}, seq: 0 };
   render();
   searchItems();
 }
@@ -969,7 +976,8 @@ async function toggleResult(uuid) {
 function adderView() {
   const adder = state.adder;
   const isSpell = adder.kind === "spell";
-  const approve = changesMode() === "approve";
+  const toParty = adder.target === "party";
+  const approve = (toParty ? state.actor.party.addMode : changesMode()) === "approve";
   const setFilter = (key, value) => { adder[key] = value; searchItems(); };
 
   const filters = el("div", { class: "adder-filters" },
@@ -1013,7 +1021,7 @@ function adderView() {
               img(r.img),
               el("span", { class: "item-title" }, r.name, el("small", { class: "muted" }, meta.filter(Boolean).join(" · ")))),
             el("div", { class: "item-quick" },
-              el("button", { class: "primary small", onclick: () => act("addItem", { uuid: r.uuid }) }, approve ? "Ask GM" : "Add"))),
+              el("button", { class: "primary small", onclick: () => act("addItem", { uuid: r.uuid, ...(toParty ? { toParty: true } : {}) }) }, approve ? "Ask GM" : "Add"))),
           open ? el("div", { class: "item-detail" },
             description(details ?? {}, !details)) : null);
       })),
@@ -1025,9 +1033,10 @@ function adderView() {
 
   return el("section", { class: `adder card ${adder.loading ? "loading" : ""}` },
     el("header", { class: "adder-head" },
-      el("h2", {}, isSpell ? "Add a spell" : "Add an item"),
+      el("h2", {}, isSpell ? "Add a spell" : toParty ? `Add to ${state.actor.party.name}` : "Add an item"),
       el("button", { class: "icon-button", onclick: () => { state.adder = null; render(); }, "aria-label": "Close search" }, icon("close"))),
-    approve ? el("p", { class: "muted hint" }, "The GM approves each addition before it reaches your sheet.") : null,
+    approve ? el("p", { class: "muted hint" },
+      `The GM approves each addition before it reaches ${toParty ? "the party's inventory" : "your sheet"}.`) : null,
     filters,
     body);
 }
@@ -1176,18 +1185,47 @@ function gearSwitch(a) {
 
 const showingParty = a => !!a.party && state.gearView === "party";
 
+/* Searching lists: what's typed in each list's box, by list. */
+
+const filters = { gear: "", party: "", features: "" };
+const fold = text => String(text ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
+
+/** Whether an item matches a search, by name or its one-line summary (type, damage, rarity…). */
+const matches = (item, query) => !query.trim() || fold(`${item.name} ${item.summary ?? ""}`).includes(fold(query).trim());
+
+function searchBox(key, placeholder) {
+  return el("label", { class: "search-box" },
+    icon("search"),
+    el("input", {
+      type: "search", placeholder, value: filters[key], autocomplete: "off", enterkeyhint: "search", "aria-label": placeholder,
+      dataset: { focusKey: `filter-${key}` },
+      oninput: e => { filters[key] = e.target.value; render(); }
+    }));
+}
+
+/**
+ * Items in titled groups, filtered by the list's search box. Returns the
+ * sections, or a "nothing matches" line when a search hides everything.
+ */
+function groupedItems(groups, items, key, row) {
+  const query = filters[key];
+  const shown = groups.map(([group, title]) => [title, items[group].filter(item => matches(item, query))]).filter(([, list]) => list.length);
+  if (!shown.length && query.trim()) return el("p", { class: "muted empty" }, `Nothing matches “${query.trim()}”.`);
+  return shown.map(([title, list]) => el("section", { class: "group" },
+    el("h2", {}, title),
+    el("ul", { class: "items" }, list.map(row))));
+}
+
 function inventoryView(a) {
   if (showingParty(a)) return [gearSwitch(a), partyView(a)];
-  const groups = GEAR_GROUPS;
-  const any = groups.some(([key]) => a.items[key].length);
+  const any = GEAR_GROUPS.some(([key]) => a.items[key].length);
   return [
     gearSwitch(a),
     currencyView(a),
-    state.adder?.kind === "item" ? adderView() : addButton("item"),
+    state.adder?.kind === "item" && state.adder.target !== "party" ? adderView() : addButton("item"),
     requestsView(a, "item"),
-    groups.filter(([key]) => a.items[key].length).map(([key, title]) => el("section", { class: "group" },
-      el("h2", {}, title),
-      el("ul", { class: "items" }, a.items[key].map(inventoryRow)))),
+    any ? searchBox("gear", "Search gear") : null,
+    groupedItems(GEAR_GROUPS, a.items, "gear", inventoryRow),
     any
       ? el("p", { class: "muted hint legend" }, icon("shield", "inline"), " toggles equipped. Tap an item for its details.")
       : el("p", { class: "muted empty" }, "No items yet.")
@@ -1279,10 +1317,14 @@ function partyView(a) {
   return [
     party.canEdit ? null : el("p", { class: "muted hint" }, "Only the GM can change the party's inventory."),
     coinsView(party.currency, (coin, n) => act("partyCurrency", { [coin]: n }, s => { s.party.currency[coin] = n; }), !party.canEdit),
-    party.canEdit && a.type !== "group" ? el("button", { class: "add-button", onclick: () => moveCoinsSheet(a) }, "Move coins") : null,
-    GEAR_GROUPS.filter(([key]) => party.items[key].length).map(([key, title]) => el("section", { class: "group" },
-      el("h2", {}, title),
-      el("ul", { class: "items" }, party.items[key].map(item => partyRow(item, party))))),
+    el("div", { class: "party-actions" },
+      party.addMode !== "off" && state.adder?.target !== "party"
+        ? el("button", { class: "add-button", onclick: () => openAdder("item", "party") }, icon("plus"), "Add item") : null,
+      party.canEdit && a.type !== "group" ? el("button", { class: "add-button", onclick: () => moveCoinsSheet(a) }, "Move coins") : null),
+    state.adder?.target === "party" ? adderView() : null,
+    requestList(party.requests, { party: true }),
+    any ? searchBox("party", "Search the party's gear") : null,
+    groupedItems(GEAR_GROUPS, party.items, "party", item => partyRow(item, party)),
     any ? null : el("p", { class: "muted empty" },
       party.canEdit ? "Nothing here yet. Open one of your items and give it to the party." : "Nothing here yet."),
     party.log.length ? el("section", { class: "group" },
@@ -1318,11 +1360,10 @@ function featuresView(a) {
         el("span", {}, "Hit dice ", el("small", { class: "muted" }, `${cls.name} ${cls.hitDice.denomination}`)),
         counter(cls.hitDice.value, cls.hitDice.max,
           v => act("hitDice", { classId: cls.id, value: v }, () => { cls.hitDice.value = v; }), "hit dice")))),
-    el("section", { class: "group" },
-      el("h2", {}, "Features"),
-      a.items.features.length
-        ? el("ul", { class: "items" }, a.items.features.map(item => itemRow(item)))
-        : el("p", { class: "muted empty" }, "No features."))
+    a.items.features.length ? searchBox("features", "Search features") : null,
+    a.items.features.length
+      ? groupedItems([["features", "Features"]], a.items, "features", item => itemRow(item))
+      : el("section", { class: "group" }, el("h2", {}, "Features"), el("p", { class: "muted empty" }, "No features."))
   ];
 }
 

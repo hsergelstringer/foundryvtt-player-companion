@@ -13,7 +13,7 @@
  */
 import { ACTIONS, RelayError } from "./actions.js";
 import { registerItemSettings, setupItems } from "./items.js";
-import { membersOf, registerPartySettings } from "./party.js";
+import { membersOf, registerPartySettings, setupParty } from "./party.js";
 import { sha256Hex } from "./sha256.js";
 import { registerTrackerSettings, setupTrackers, TrackerWindow } from "./trackers.js";
 
@@ -248,6 +248,7 @@ Hooks.on(`${MODULE_ID}.partyChanged`, () => {
 
 setupTrackers();
 setupItems();
+setupParty();
 
 Hooks.on("updateUser", (user, changes) => {
   if (!foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) return;

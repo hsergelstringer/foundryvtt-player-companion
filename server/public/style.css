@@ -422,6 +422,8 @@ button.pip::after { content: ""; position: absolute; inset: -8px; } /* a bigger 
 /* Party inventory */
 
 .gear-switch { display: flex; }
+.party-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.party-actions:empty { display: none; }
 .gear-switch button { flex: 1; }
 .party-log { list-style: none; margin: 0; padding: 4px 14px; display: flex; flex-direction: column; }
 .party-log li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 0.9rem; }

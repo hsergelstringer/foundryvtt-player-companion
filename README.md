@@ -14,7 +14,7 @@ Foundry modules run in the browser and can't accept connections, so the module i
 - **Traits:** senses, damage resistances, immunities and vulnerabilities, condition immunities, languages, and armor, weapon and tool proficiencies. Senses and defenses also show under hit points, where they matter mid-fight.
 - **Hit points:** take damage (temporary HP is used first), heal, set HP or temp HP. A bar pinned to the top keeps HP one tap away while scrolling.
 - **Spells:** slots as pips in each level's header, prepare and unprepare, and see casting time, range, components, duration, damage and description.
-- **Items and features:** uses (including actions with their own uses), quantities, equipped, attunement, currency, and full details: damage, to hit, properties, mastery, weight, price.
+- **Items and features:** uses (including actions with their own uses), quantities, equipped, attunement, currency, and full details: damage, to hit, properties, mastery, weight, price. Gear, the party's gear and features each have a search box.
 - **Descriptions** read as they do in Foundry: dice formulas filled in from the character, links and rules references as names, tables and lists kept.
 - **Rests**, hit dice, death saves, exhaustion and Heroic Inspiration.
 - **Party inventory:** see the party's shared items and coin, give items and coin to the party and take them out, with a log of who did what.
@@ -97,6 +97,7 @@ In the web app, the Gear tab gets a **Character / Party** switch for every membe
 
 - The party's coin and items, by type. Tap an item for its details and description.
 - **Take** on a party item moves it, or some of a stack, to your character. **Give to the party** on one of your items does the reverse. **Move coins** moves coin either way.
+- **Add item** adds an item from a compendium straight to the party, following the *Adding and removing items* setting: with GM approval it waits as a request on the party, which only the player who asked can withdraw.
 - Quantities and coin can be changed directly, for rations eaten or treasure found.
 - **Recent** lists the last changes made from the web app: who gave, took or changed what.
 

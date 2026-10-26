@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.11
+
+**Added**
+- Items can be added from compendiums straight to the party's inventory, with **Add item** on the Party view or on the group itself. It follows the *Adding and removing items* setting: with GM approval it waits as a request on the party, which only the player who asked can withdraw. Additions are logged, including approved ones.
+- Search boxes for gear, the party's gear and features. They match names and summaries (type, damage, rarity…), ignoring case and accents.
+
+**API**
+- `addItem` and `cancelItemRequest` take `toParty`. Party sheets have `addMode` and `requests`, and requests have `mine`.
+
 ## 0.0.10
 
 **Changed**

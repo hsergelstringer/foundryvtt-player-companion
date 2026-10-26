@@ -241,6 +241,14 @@ function serializeSpellcasting(actor) {
   };
 }
 
+/** Waiting and denied item requests on an actor. `mine` marks the ones this user made, which they can withdraw. */
+function serializeRequests(actor, user) {
+  return Items.requestsFor(actor).map(r => ({
+    id: r.id, kind: r.kind, status: r.status, name: r.name, img: imageUrl(r.img), type: r.type,
+    quantity: r.quantity, itemId: r.itemId, reason: r.reason ?? null, userName: r.userName, mine: r.userId === user?.id
+  }));
+}
+
 /** Items sorted into the sheet's groups. */
 function groupItems(list, serialize) {
   const items = { weapons: [], equipment: [], consumables: [], tools: [], loot: [], features: [], spells: [] };
@@ -267,26 +275,30 @@ function serializePartyItem(item) {
 }
 
 /** The character's party (see party.js), or null: its coin and items, nothing about any character. */
-function serializeParty(actor) {
+function serializeParty(actor, user) {
   const party = Party.partyOf(actor);
   if (!party) return null;
+  const canEdit = Party.partyMode() === "edit";
   const { weapons, equipment, consumables, tools, loot } = groupItems(Party.partyItems(party), serializePartyItem);
   return {
     id: party.id,
     name: party.name,
     img: imageUrl(party.img),
-    canEdit: Party.partyMode() === "edit",
+    canEdit,
     members: Party.membersOf(party).map(m => ({ id: m.id, name: m.name, img: imageUrl(m.img) })),
     currency: Object.fromEntries(Party.COINS.map(k => [k, num(party.system.currency?.[k])])),
     items: { weapons, equipment, consumables, tools, loot },
-    log: Party.partyLog(party).slice(0, 20)
+    log: Party.partyLog(party).slice(0, 20),
+    // Adding from compendiums follows the item change setting, as on a character.
+    addMode: canEdit ? Items.itemChangeMode() : "off",
+    requests: serializeRequests(party, user)
   };
 }
 
 export function serializeActor(actor, user) {
   // A Group the player owns is the party's stash: gear and money, none of a character's data.
   if (actor.type === "group") {
-    return { id: actor.id, name: actor.name, type: actor.type, img: imageUrl(actor.img), party: serializeParty(actor) };
+    return { id: actor.id, name: actor.name, type: actor.type, img: imageUrl(actor.img), party: serializeParty(actor, user) };
   }
   const sys = actor.system;
   const attr = sys.attributes ?? {};
@@ -348,13 +360,10 @@ export function serializeActor(actor, user) {
     items,
     itemChanges: {
       mode: Items.itemChangeMode(),
-      requests: Items.requestsFor(actor).map(r => ({
-        id: r.id, kind: r.kind, status: r.status, name: r.name, img: imageUrl(r.img), type: r.type,
-        quantity: r.quantity, itemId: r.itemId, reason: r.reason ?? null, userName: r.userName
-      }))
+      requests: serializeRequests(actor, user)
     },
     trackers: user ? Trackers.trackersFor(user, actor) : null,
-    party: serializeParty(actor)
+    party: serializeParty(actor, user)
   };
 }
 
@@ -596,11 +605,13 @@ export const ACTIONS = {
    * Body: { uuid, quantity? }. Adds a compendium item or spell, or asks the GM to.
    * Returns { actor, notice }.
    */
-  async addItem(user, { actorId, uuid, quantity }) {
+  async addItem(user, { actorId, uuid, quantity, toParty }) {
     const actor = ownedActor(user, actorId);
-    const source = await Items.compendiumItem(user, uuid);
-    const notice = await Items.requestChange(user, actor, {
-      kind: "add", source,
+    // A party gets items only, never spells. Opening the group itself always adds to it.
+    const party = toParty === true || actor.type === "group" ? Party.requireParty(actor, { edit: true }) : null;
+    const source = await Items.compendiumItem(user, uuid, party ? "item" : null);
+    const notice = await Items.requestChange(user, party ?? actor, {
+      kind: "add", source, via: party && party !== actor ? actor : null,
       quantity: quantity === undefined || quantity === null ? null : requireInt(quantity, "quantity", { min: 1, max: 999 })
     });
     return { actor: serializeActor(actor, user), notice };
@@ -615,10 +626,11 @@ export const ACTIONS = {
     return { actor: serializeActor(actor, user), notice };
   },
 
-  /** Body: { requestId }. Withdraws a pending request or dismisses a denied one. */
-  async cancelItemRequest(user, { actorId, requestId }) {
+  /** Body: { requestId, toParty? }. Withdraws a pending request or dismisses a denied one; on a party, only your own. */
+  async cancelItemRequest(user, { actorId, requestId, toParty }) {
     const actor = ownedActor(user, actorId);
-    await Items.cancelRequest(actor, String(requestId ?? ""));
+    const party = toParty === true || actor.type === "group" ? Party.requireParty(actor) : null;
+    await Items.cancelRequest(party ?? actor, String(requestId ?? ""), party ? user.id : null);
     return serializeActor(actor, user);
   },
 

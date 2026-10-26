@@ -20,6 +20,7 @@ let base;
 let world;
 let api;
 let Items;
+let Party;
 const tokens = {};
 
 const freePort = () => new Promise(resolve => {
@@ -68,6 +69,7 @@ before(async () => {
   world = installFoundry({ relayUrl: base, relaySecret: SECRET });
   await import("../module/scripts/main.js");
   Items = await import("../module/scripts/items.js");
+  Party = await import("../module/scripts/party.js");
   startFoundry();
   api = game.modules.get("player-companion").api;
   await waitFor(() => api.Relay.status === "connected", "the module to connect to the relay");
@@ -498,12 +500,56 @@ describe("party inventory", () => {
     }
   });
 
+  test("compendium items can be added straight to the party, but not spells", async () => {
+    await game.settings.set("player-companion", "itemChanges", "direct");
+    const owned = own("Longsword").length;
+    const { status, data } = await act("addItem", { uuid: "Compendium.dnd5e.items.Item.longsword", toParty: true });
+    assert.equal(status, 200);
+    assert.equal(data.notice, "Added Longsword to The Company");
+    assert.ok(partyItem(data.actor, "Longsword"));
+    assert.equal(own("Longsword").length, owned, "the character doesn't get it");
+    await waitFor(() => Party.partyLog(world.party)[0]?.text === "added Longsword", "the log entry");
+    assert.equal(Party.partyLog(world.party)[0].actor, "Isen Frostborn");
+
+    assert.equal((await act("addItem", { uuid: "Compendium.dnd5e.spells.Item.cure", toParty: true })).status, 400);
+    assert.equal((await act("addItem", { uuid: "Compendium.dnd5e.items.Item.longsword", toParty: true }, tokens.other)).status, 404);
+  });
+
+  test("with GM approval, a party add waits as a request only its maker can withdraw", async () => {
+    await game.settings.set("player-companion", "itemChanges", "approve");
+    const { data } = await act("addItem", { uuid: "Compendium.dnd5e.items.Item.potion", quantity: 2, toParty: true });
+    assert.equal(data.notice, "Asked the GM to add Potion of Healing (×2) to The Company");
+    const [request] = data.actor.party.requests;
+    assert.equal(request.mine, true);
+    assert.deepEqual(data.actor.itemChanges.requests, [], "it's the party's request, not the character's");
+
+    // Another player who owns the group sees it but can't withdraw it.
+    world.party.owners.add("other");
+    try {
+      const theirs = await call("GET", "actors/party", null, tokens.other);
+      assert.equal(theirs.data.party.requests[0].mine, false);
+      assert.equal((await call("POST", "actors/party/cancelItemRequest", { requestId: request.id }, tokens.other)).status, 404);
+    }
+    finally {
+      world.party.owners.delete("other");
+    }
+
+    await Items.resolveRequest(request.id, true);
+    const after = await sheet();
+    assert.equal(partyItem(after, "Potion of Healing").quantity, 2);
+    assert.deepEqual(after.party.requests, []);
+    await waitFor(() => Party.partyLog(world.party)[0]?.text === "added 2 × Potion of Healing", "the approved add in the log");
+    assert.equal(Party.partyLog(world.party)[0].actor, "Isen Frostborn");
+  });
+
   test("view-only and off", async () => {
     await game.settings.set("player-companion", "partyInventory", "view");
     const viewing = await sheet();
     assert.equal(viewing.party.canEdit, false);
     assert.equal((await act("partyQuantity", { itemId: partyItem(viewing, "Rations").id, value: 1 })).status, 403);
     assert.equal((await act("giveToParty", { itemId: "rope" })).status, 403);
+    assert.equal(viewing.party.addMode, "off");
+    assert.equal((await act("addItem", { uuid: "Compendium.dnd5e.items.Item.longsword", toParty: true })).status, 403);
 
     await game.settings.set("player-companion", "partyInventory", "off");
     assert.equal((await sheet()).party, null);

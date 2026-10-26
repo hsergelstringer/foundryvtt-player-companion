@@ -88,9 +88,9 @@ Each action is `POST /api/actors/:id/<action>`. Unless noted, it returns the upd
 | --- | --- | --- |
 | `searchItems` | `{ "kind": "item", "query": "rope" }`, also `pack`, `type`, and `level` for spells | Returns `{ total, results, packs }`. At most 50 results, from compendiums the user can see. |
 | `itemDetails` | `{ "uuid": "Compendium.…" }` | A search result in full, with `description` and `descriptionHtml` |
-| `addItem` | `{ "uuid": "Compendium.…", "quantity": 1 }` | Adds the item, or asks the GM to. Returns `{ actor, notice }`. |
+| `addItem` | `{ "uuid": "Compendium.…", "quantity": 1 }` | Adds the item, or asks the GM to. Returns `{ actor, notice }`. Add `"toParty": true` to add an item (not a spell) to the character's party instead; on a Group actor it always goes to the group. |
 | `removeItem` | `{ "itemId": "…" }` | Removes the item, or asks the GM to. Returns `{ actor, notice }`. |
-| `cancelItemRequest` | `{ "requestId": "…" }` | Withdraws a waiting request or dismisses a denied one |
+| `cancelItemRequest` | `{ "requestId": "…" }` | Withdraws a waiting request or dismisses a denied one. With `"toParty": true` (or on a Group), a party request; only the user who made it can. |
 
 `notice` is a sentence for the player, such as "Asked the GM to add Longsword to Isen".
 
@@ -141,9 +141,9 @@ Moved items arrive unequipped and unattuned. Consumables and loot stack onto a m
 | `skills` | `[{ key, label, ability, total, passive, proficiency }]`; `proficiency` is 0, 0.5, 1 or 2 (expertise) |
 | `spellSlots` | `[{ key, level, label, value, max }]`, including `pact` |
 | `items` | `{ weapons, equipment, consumables, tools, loot, features, spells }`; see [items](#items) |
-| `itemChanges` | `{ mode, requests }`; `mode` is `approve`, `direct` or `off`, and `requests` are this character's waiting and denied requests |
+| `itemChanges` | `{ mode, requests }`; `mode` is `approve`, `direct` or `off`, and `requests` are this character's waiting and denied requests, each with `mine` when this user made it |
 | `trackers` | `{ character, party, canCreate }`, each tracker with its value and whether this user can change (`canEdit`) or delete it (`canDelete`) |
-| `party` | The character's party, or `null`: `{ id, name, img, canEdit, members, currency, items, log }`. `members` are `{ id, name, img }`; `items` are `{ weapons, equipment, consumables, tools, loot }`, each `{ id, name, type, img, updated, hasDescription, quantity, summary, details, inParty: true }`, where `details` are only type, properties, rarity, attunement, weight and price (to hit, damage, saves and uses depend on a character, so they're left out); `log` is the 20 latest changes, newest first, as `{ id, at, user, actor, text }` (`text` like `"gave 5 × Arrows"`). |
+| `party` | The character's party, or `null`: `{ id, name, img, canEdit, members, currency, items, log, addMode, requests }`. `addMode` is the item change mode for adding to the party (`off` when members can only look); `requests` are its waiting and denied requests, as in `itemChanges`. `members` are `{ id, name, img }`; `items` are `{ weapons, equipment, consumables, tools, loot }`, each `{ id, name, type, img, updated, hasDescription, quantity, summary, details, inParty: true }`, where `details` are only type, properties, rarity, attunement, weight and price (to hit, damage, saves and uses depend on a character, so they're left out); `log` is the 20 latest changes, newest first, as `{ id, at, user, actor, text }` (`text` like `"gave 5 × Arrows"`). |
 
 ### Items
 
