@@ -60,6 +60,20 @@ before(async () => {
       res.writeHead(200, { "Content-Type": "image/webp" });
       return res.end("webp-bytes");
     }
+    if (req.url === "/endless.png") {
+      // No length given, and more than the limit.
+      res.writeHead(200, { "Content-Type": "image/png" });
+      const chunk = Buffer.alloc(1024 * 1024);
+      let sent = 0;
+      const more = () => {
+        while (sent < 21 && !res.destroyed) {
+          sent++;
+          if (!res.write(chunk)) return res.once("drain", more);
+        }
+        res.end();
+      };
+      return more();
+    }
     if (req.url === "/huge.png") {
       res.writeHead(200, { "Content-Type": "image/png", "Content-Length": String(25 * 1024 * 1024) });
       return res.write("x");
@@ -117,7 +131,7 @@ describe("images through the relay", () => {
     assert.equal(res.headers.get("content-type"), "image/svg+xml");
     assert.equal(res.headers.get("x-content-type-options"), "nosniff");
     assert.match(res.headers.get("content-security-policy"), /sandbox/);
-    assert.match(res.headers.get("cache-control"), /private/);
+    assert.equal(res.headers.get("cache-control"), "private, no-cache");
     assert.equal(await res.text(), SVG);
   });
 
@@ -131,6 +145,26 @@ describe("images through the relay", () => {
     const res = await image("worlds/test/My%20Portrait.webp");
     assert.equal(res.status, 200);
     assert.equal(await res.text(), "webp-bytes");
+  });
+
+  test("ignores the query, so cache-busted URLs work", async () => {
+    assert.equal((await image("icons/svg/d20.svg?v=2")).status, 200);
+  });
+
+  test("a sheet's worth of images at once asks Foundry about the token once", async () => {
+    const fresh = await api.Tokens.create(world.ursula, "Tablet");
+    const handle = api.Relay.handle;
+    let checks = 0;
+    api.Relay.handle = function(msg) {
+      if (msg.action === "me") checks++;
+      return handle.call(this, msg);
+    };
+    try {
+      const all = await Promise.all(Array.from({ length: 20 }, () => image("icons/svg/d20.svg", {}, fresh)));
+      assert.ok(all.every(r => r.status === 200));
+      assert.equal(checks, 1);
+    }
+    finally { api.Relay.handle = handle; }
   });
 
   test("needs a working token", async () => {
@@ -163,6 +197,21 @@ describe("images through the relay", () => {
   test("missing and oversized images", async () => {
     assert.equal((await image("icons/missing.png")).status, 404);
     assert.equal((await image("huge.png")).status, 413);
+  });
+
+  test("an image with no length is cut off at the limit", async () => {
+    const res = await image("endless.png");
+    assert.equal(res.status, 200);
+    await assert.rejects(res.arrayBuffer());
+  });
+
+  test("FOUNDRY_URL with a path is refused at startup", async () => {
+    const code = await new Promise(resolve => spawn(process.execPath, ["server.js"], {
+      cwd: `${ROOT}/server`,
+      env: { ...process.env, PORT: "0", RELAY_SECRET: SECRET, FOUNDRY_URL: "http://foundry:30000/vtt" },
+      stdio: "ignore"
+    }).on("exit", resolve));
+    assert.equal(code, 1);
   });
 
   test("other requests still work", async () => {

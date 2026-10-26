@@ -58,7 +58,7 @@ Errors are `{ "error": "message" }` with one of these statuses:
 
 `img` fields are absolute URLs on the GM's Foundry address. If phones can't reach Foundry, a relay started with `FOUNDRY_URL` serves those images itself: for an `img` that starts with the `imageOrigin` from the [event stream](#live-updates), request `/api/images` followed by the URL's path, with the token in the `Authorization` header as usual. For example, `https://foundry.example.net/icons/svg/d20.svg` becomes `GET /api/images/icons/svg/d20.svg`.
 
-Only `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.avif` and `.svg` files are served, up to 20 MB. Responses can be cached privately for 5 minutes and carry Foundry's `ETag` and `Last-Modified`, so `If-None-Match` and `If-Modified-Since` work. A browser `<img>` can't send the header, so fetch the image and show it from a `blob:` URL, as the web app does. Without `FOUNDRY_URL` the route answers `404` and `imageOrigin` is `null`.
+Only `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.avif` and `.svg` files are served, up to 20 MB. Responses are `private, no-cache` and carry Foundry's `ETag` and `Last-Modified`, so caches revalidate with `If-None-Match` or `If-Modified-Since` (each revalidation checks the token too). A browser `<img>` can't send the header, so fetch the image and show it from a `blob:` URL, as the web app does. Without `FOUNDRY_URL` the route answers `404` and `imageOrigin` is `null`.
 
 ### Actions
 

@@ -41,7 +41,7 @@ Or build it with `docker build -t player-companion server/`, or run it with Node
 | `RELAY_SECRET` | required, at least 16 characters | Lets the GM's browser connect. Keep it private. |
 | `PORT` | `8080` | HTTP port |
 | `ALLOWED_ORIGINS` | `*` | Origins allowed to call the API from other websites, comma separated |
-| `FOUNDRY_URL` | off | Foundry's address as the relay reaches it, e.g. `http://foundryvtt:30000`. When set, the relay serves Foundry's images to the app, so phones don't need to reach Foundry. Leave it unset and images load straight from Foundry. |
+| `FOUNDRY_URL` | off | Foundry's address as the relay reaches it: scheme, host and port only, e.g. `http://foundryvtt:30000`. When set, the relay serves Foundry's images to the app, so phones don't need to reach Foundry. Leave it unset and images load straight from Foundry. |
 
 Portraits and item icons come from Foundry, at the address the GM opened Foundry on. If players' phones can't reach that address (Foundry is only on your home network, or behind a login like Cloudflare Access), set `FOUNDRY_URL` so the relay fetches them instead. The relay needs to reach Foundry for that, so it suits running both on the same machine or cluster.
 

@@ -61,18 +61,27 @@ function relayImagePath(src) {
   if (!state.imageOrigin) return null;
   try {
     const url = new URL(src);
-    return url.origin === state.imageOrigin ? `api/images${url.pathname}` : null;
+    // The query stays so a cache-busted URL (portrait.webp?v=2) is fetched again; the relay ignores it.
+    return url.origin === state.imageOrigin ? `api/images${url.pathname}${url.search}` : null;
   }
   catch { return null; }
 }
 
+/** How long a failed image waits before the next render tries it again. */
+const IMAGE_RETRY_MS = 30_000;
+
 /** <img> can't send the token, so these are fetched with it and shown from a blob: URL. */
 function relayImage(path) {
   if (!relayImages.has(path)) {
-    relayImages.set(path, fetch(path, { headers: { Authorization: `Bearer ${state.token}` } })
+    const image = fetch(path, { headers: { Authorization: `Bearer ${state.token}` } })
       .then(res => (res.ok ? res.blob() : null))
       .then(blob => (blob ? URL.createObjectURL(blob) : null))
-      .catch(() => null));
+      .catch(() => null)
+      .then(url => {
+        if (!url) setTimeout(() => { if (relayImages.get(path) === image) relayImages.delete(path); }, IMAGE_RETRY_MS);
+        return url;
+      });
+    relayImages.set(path, image);
   }
   return relayImages.get(path);
 }
@@ -326,6 +335,7 @@ function connectEvents() {
     const msg = JSON.parse(event.data);
     if (msg.type === "ready") {
       eventsRetry = 1000;
+      retryFailedImages();
       setImageOrigin(msg.imageOrigin);
       setFoundry(true);
       if (!state.me) loadMe().catch(handleError);

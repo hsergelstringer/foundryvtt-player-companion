@@ -17,6 +17,8 @@ import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzip } from "node:zlib";
 import { promisify } from "node:util";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { WebSocketServer } from "ws";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -48,17 +50,20 @@ if (SECRET.length < 16) {
   process.exit(1);
 }
 
-let foundryOrigin = null;
-if (FOUNDRY_URL) {
+/** The origin of a URL, or null if it isn't an http(s) URL. */
+function originOf(value) {
   try {
-    const url = new URL(FOUNDRY_URL);
-    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error();
-    foundryOrigin = url.origin;
+    const url = new URL(String(value ?? ""));
+    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : null;
   }
-  catch {
-    console.error("FOUNDRY_URL must be an http:// or https:// address, e.g. http://foundry:30000");
-    process.exit(1);
-  }
+  catch { return null; }
+}
+
+const foundryOrigin = FOUNDRY_URL ? originOf(FOUNDRY_URL) : null;
+// Image paths arrive whole (with any route prefix), so a path here would be dropped or doubled.
+if (FOUNDRY_URL && (!foundryOrigin || new URL(FOUNDRY_URL).pathname !== "/")) {
+  console.error("FOUNDRY_URL must be just Foundry's scheme, host and port, e.g. http://foundry:30000");
+  process.exit(1);
 }
 
 const log = (...args) => console.log(new Date().toISOString(), ...args);
@@ -81,6 +86,7 @@ function secretMatches(candidate) {
 
 function attachWorld(ws, hello) {
   if (world) world.socket.close(4000, "Replaced by a newer Foundry connection");
+  forgetTokens();
   world = { socket: ws, worldId: hello.world, worldTitle: hello.title, origin: originOf(hello.origin), connectedAt: new Date().toISOString() };
   log(`Foundry connected: ${hello.title ?? hello.world ?? "unknown world"}`);
 
@@ -104,6 +110,7 @@ function attachWorld(ws, hello) {
   ws.on("close", () => {
     if (world?.socket !== ws) return;
     world = null;
+    forgetTokens();
     log("Foundry disconnected");
     for (const [id, waiting] of pending) {
       clearTimeout(waiting.timer);
@@ -114,15 +121,6 @@ function attachWorld(ws, hello) {
   });
 
   broadcastAll({ type: "foundry", connected: true, imageOrigin: imageOrigin() });
-}
-
-/** The origin of a URL, or null if it isn't an http(s) URL. */
-function originOf(value) {
-  try {
-    const url = new URL(String(value ?? ""));
-    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : null;
-  }
-  catch { return null; }
 }
 
 /** Image URLs starting with this are served by the relay; null when it doesn't serve images. */
@@ -264,27 +262,42 @@ function bearerToken(req) {
 /*  Images                                      */
 /* -------------------------------------------- */
 
-/** Tokens recently confirmed for image requests: token -> { userId, until }. A sheet has dozens of images. */
+/**
+ * Tokens recently confirmed for image requests: token -> { userId, until }, or { pending } while Foundry
+ * is being asked. A sheet has dozens of images, which would otherwise each ask Foundry.
+ */
 const checkedTokens = new Map();
+/** Bumped whenever tokens are forgotten, so a check that was already running isn't cached afterwards. */
+let tokenEpoch = 0;
 
 function forgetUser(userId) {
+  tokenEpoch++;
   for (const [token, entry] of checkedTokens) if (entry.userId === userId) checkedTokens.delete(token);
 }
 
+/** Foundry disconnected or another world connected: no cached answer still holds. */
+function forgetTokens() {
+  tokenEpoch++;
+  checkedTokens.clear();
+}
+
 /** Check a token with Foundry, at most once a minute per token. Revoking a token forgets it at once. */
-async function checkToken(token) {
+function checkToken(token) {
   const known = checkedTokens.get(token);
-  if (known && known.until > Date.now()) return { ok: true };
-  const reply = await forward(token, "me");
-  if (!reply.ok) {
-    checkedTokens.delete(token);
+  if (known?.pending) return known.pending;
+  if (known && known.until > Date.now()) return Promise.resolve({ ok: true });
+  const epoch = tokenEpoch;
+  const pending = forward(token, "me").then(reply => {
+    if (checkedTokens.get(token)?.pending === pending) checkedTokens.delete(token);
+    if (!reply.ok || epoch !== tokenEpoch) return reply;
+    if (checkedTokens.size >= 1000) {
+      for (const [key, entry] of checkedTokens) if (entry.until <= Date.now()) checkedTokens.delete(key);
+    }
+    checkedTokens.set(token, { userId: reply.data.user.id, until: Date.now() + TOKEN_CHECK_MS });
     return reply;
-  }
-  if (checkedTokens.size >= 1000) {
-    for (const [key, entry] of checkedTokens) if (entry.until <= Date.now()) checkedTokens.delete(key);
-  }
-  checkedTokens.set(token, { userId: reply.data.user.id, until: Date.now() + TOKEN_CHECK_MS });
-  return reply;
+  });
+  checkedTokens.set(token, { pending });
+  return pending;
 }
 
 /**
@@ -320,8 +333,8 @@ async function sendImage(req, res, token, path) {
     return sendJSON(req, res, 502, { error: "Could not reach Foundry at FOUNDRY_URL" });
   }
 
-  // Foundry lets a file be replaced at the same path, so cache briefly and revalidate.
-  const headers = { ...corsHeaders(req), "Cache-Control": "private, max-age=300" };
+  // Always revalidate: Foundry lets a file be replaced at the same path, and each use should pass the token check.
+  const headers = { ...corsHeaders(req), "Cache-Control": "private, no-cache" };
   for (const name of ["etag", "last-modified"]) {
     const value = upstream.headers.get(name);
     if (value) headers[name] = value;
@@ -334,33 +347,31 @@ async function sendImage(req, res, token, path) {
     await upstream.body?.cancel();
     return sendJSON(req, res, 404, { error: "Image not found" });
   }
-  const tooLarge = () => sendJSON(req, res, 413, { error: "Image is too large" });
-  if (Number(upstream.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) {
+  const length = upstream.headers.get("content-length");
+  if (Number(length) > MAX_IMAGE_BYTES) {
     await upstream.body?.cancel();
-    return tooLarge();
-  }
-  const chunks = [];
-  let size = 0;
-  try {
-    for await (const chunk of upstream.body) {
-      size += chunk.length;
-      if (size > MAX_IMAGE_BYTES) return tooLarge();
-      chunks.push(chunk);
-    }
-  }
-  catch (err) {
-    log(`Could not fetch an image from FOUNDRY_URL: ${err.message}`);
-    return sendJSON(req, res, 502, { error: "Could not reach Foundry at FOUNDRY_URL" });
+    return sendJSON(req, res, 413, { error: "Image is too large" });
   }
   res.writeHead(200, {
     ...headers,
     // The type comes from the extension, never from upstream; SVGs can't run scripts if opened directly.
     "Content-Type": type,
-    "Content-Length": size,
+    ...(length ? { "Content-Length": length } : {}),
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"
   });
-  res.end(Buffer.concat(chunks));
+  // Streamed, not held in memory. An image without a length that passes the limit is cut off.
+  let size = 0;
+  const limit = new Transform({
+    transform(chunk, encoding, done) {
+      size += chunk.length;
+      done(size > MAX_IMAGE_BYTES ? new Error("Image passed the size limit") : null, chunk);
+    }
+  });
+  try { await pipeline(Readable.fromWeb(upstream.body), limit, res); }
+  catch (err) {
+    if (err.code !== "ERR_STREAM_PREMATURE_CLOSE") log(`Image from FOUNDRY_URL cut off: ${err.message}`);
+  }
 }
 
 /**
