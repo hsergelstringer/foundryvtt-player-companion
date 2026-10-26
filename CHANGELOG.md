@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.15
 
 **Added**
 - A **Combat** tab in the web app while a combat is set up: the turn order of the combat on the scene the GM is viewing, as players see it in Foundry (hidden combatants left out, no one else's hit points), with whose turn it is, who's up next, and a dot on the tab on your turn. Players enter the initiative they rolled at the table for their own characters. A new world setting, *Combat tracker in the web app*, chooses between entering initiative, view only, or off.
