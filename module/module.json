@@ -2,7 +2,7 @@
   "id": "player-companion",
   "title": "Player Companion",
   "description": "Lets players read and manage their D&D 5e characters from outside Foundry (a phone-friendly web app or any app using the REST API), through a small relay server. The GM's browser does the work, so everything still goes through Foundry's permissions.",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "authors": [
     {
       "name": "Harry"

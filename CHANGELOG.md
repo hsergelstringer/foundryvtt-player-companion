@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.13
 
 **Added**
 - The relay can serve Foundry's images, for players whose phones can't reach Foundry (it's only on the home network, or behind a login). Set `FOUNDRY_URL` on the relay to Foundry's address as the relay reaches it; leave it unset to load images straight from Foundry as before. Images still need the player's token.
